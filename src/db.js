@@ -12,9 +12,12 @@ const db = new DatabaseSync(dbFile);
 db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
 
 // db.transaction(fn) => دالة بتشغّل fn جوه BEGIN/COMMIT وبترجع لو حصل خطأ
+// (لو اتنادت جوه transaction تانية، بتشتغل جواها من غير BEGIN جديد)
+let txDepth = 0;
 db.transaction = (fn) => (...args) => {
-  db.exec('BEGIN');
-  try { const r = fn(...args); db.exec('COMMIT'); return r; } catch (e) { db.exec('ROLLBACK'); throw e; }
+  if (txDepth > 0) return fn(...args);
+  db.exec('BEGIN'); txDepth++;
+  try { const r = fn(...args); txDepth--; db.exec('COMMIT'); return r; } catch (e) { txDepth--; db.exec('ROLLBACK'); throw e; }
 };
 
 db.exec(`
@@ -67,6 +70,13 @@ if (!db.prepare('SELECT 1 FROM users LIMIT 1').get()) {
   db.prepare('INSERT INTO users (username, password_hash, full_name, role) VALUES (?,?,?,?)')
     .run('admin', bcrypt.hashSync(process.env.ADMIN_PASSWORD || 'admin123', 10), 'مدير النظام', 'admin');
 }
+
+// إضافة أعمدة جديدة لقواعد البيانات القديمة (اللي اتعملت بنسخة أقدم من البرنامج)
+const addColumn = (table, col, type) => {
+  if (!db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
+};
+addColumn('employees', 'national_id', 'TEXT');
+addColumn('employees', 'salary', 'REAL');
 
 // الإعدادات الافتراضية: الجمعة راحة أسبوعية، وقسم الإجازات مقفول
 const defaults = { weekly_off: '5', leaves_enabled: '0' };

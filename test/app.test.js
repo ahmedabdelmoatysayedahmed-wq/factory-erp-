@@ -10,11 +10,11 @@ let server, base;
 
 function client() {
   const jar = {};
-  return async (method, url, form) => {
+  return async (method, url, form, raw) => {
     const res = await fetch(base + url, {
       method, redirect: 'manual',
-      headers: { cookie: Object.entries(jar).map(([k, v]) => k + '=' + v).join('; '), ...(form ? { 'content-type': 'application/x-www-form-urlencoded' } : {}) },
-      body: form ? new URLSearchParams(form).toString() : undefined,
+      headers: { cookie: Object.entries(jar).map(([k, v]) => k + '=' + v).join('; '), ...(form ? { 'content-type': 'application/x-www-form-urlencoded' } : {}), ...(raw ? { 'content-type': 'application/octet-stream' } : {}) },
+      body: raw || (form ? new URLSearchParams(form).toString() : undefined),
     });
     for (const c of res.headers.getSetCookie()) { const [k, v] = c.split(';')[0].split('='); jar[k] = v; }
     return { status: res.status, location: res.headers.get('location'), text: await res.text() };
@@ -88,6 +88,33 @@ test('full workflow', async () => {
   const bad = await en('POST', '/r/stock_movements', { date: '2026-11-01', material_id: '1', type: 'out', qty: '999' });
   assert.match(bad.text, /exceeds available stock \(40\)/);
 
+  // استيراد الموظفين من Excel
+  const xlsx = fs.readFileSync(path.join(__dirname, 'fixtures', 'employees-sample.xlsx'));
+  const imp = async (q = '') => JSON.parse((await req('POST', '/r/employees/import' + q, null, xlsx)).text);
+  const pv = await imp('?preview=1');
+  assert.equal(pv.rows.length, 3);
+  assert.equal(pv.rows[0].name, 'موظف تجريبي أول'); // المسافات الزيادة اتشالت
+  assert.equal(pv.rows[0].phone, '01000000001'); // الصفر اللي على الشمال رجع
+  assert.equal(pv.rows[0].national_id, '29001010100011');
+  assert.equal(pv.rows[0].hire_date, '2025-03-16');
+  assert.equal(pv.rows[1].status, 'inactive');
+  assert.deepEqual(await imp(), { ok: true, added: 3, updated: 0 });
+  assert.deepEqual(await imp(), { ok: true, added: 0, updated: 3 }); // مش بيتكرر
+  const notXlsx = JSON.parse((await req('POST', '/r/employees/import', null, Buffer.from('not excel'))).text);
+  assert.equal(notXlsx.ok, false);
+  const emps = (await req('GET', '/r/employees?q=' + encodeURIComponent('تجريبي'))).text;
+  assert.match(emps, /01000000001/);
+
+  // بيانات تجريبية على الموظفين الحاليين، ومسح البيانات
+  await req('POST', '/settings/demo', {});
+  assert.match((await req('GET', '/r/employees')).text, /موظف تجريبي أول/);
+  assert.match((await req('GET', '/r/production_logs')).text, /مكبس حقن 1/);
+  await req('POST', '/settings/clear', { confirm: 'غلط', keep_employees: '1' });
+  assert.match((await req('GET', '/r/production_logs')).text, /مكبس حقن 1/); // ماتمسحش
+  await req('POST', '/settings/clear', { confirm: 'مسح', keep_employees: '1' });
+  assert.doesNotMatch((await req('GET', '/r/production_logs')).text, /مكبس حقن 1/);
+  assert.match((await req('GET', '/r/employees')).text, /موظف تجريبي أول/);
+
   // صلاحيات: أمين مخزن مايقدرش يدخل الإنتاج أو الموظفين
   await req('POST', '/users', { username: 'store', full_name: 'أمين', role: 'storekeeper', password: 'store123', active: '1' });
   const s = client();
@@ -97,4 +124,12 @@ test('full workflow', async () => {
   assert.equal((await s('GET', '/users')).status, 403);
   assert.equal((await s('POST', '/r/employees', { name: 'x' })).status, 403);
   assert.equal((await s('GET', '/r/molds/new')).status, 403); // يشوف الإسطمبات بس مايعدلش
+
+  // المشرف بيشوف الموظفين بس من غير المرتب
+  await req('POST', '/users', { username: 'sup', full_name: 'مشرف', role: 'supervisor', password: 'sup123', active: '1' });
+  const sv = client();
+  await sv('POST', '/login', { username: 'sup', password: 'sup123' });
+  assert.equal((await sv('GET', '/r/employees')).status, 200);
+  assert.doesNotMatch((await sv('GET', '/r/employees')).text, /المرتب/);
+  assert.match((await req('GET', '/r/employees/new')).text, /المرتب/);
 });

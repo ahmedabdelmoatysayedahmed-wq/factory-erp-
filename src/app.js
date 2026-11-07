@@ -35,7 +35,9 @@ app.use((req, res, next) => {
   res.locals.user = req.session.user || null;
   res.locals.can = (s, a) => allowed(req, s, a);
   // الحقول التابعة لقسم مقفول (زي رصيد الإجازات) مابتظهرش
-  res.locals.fieldOn = (f) => f.module !== 'leaves' || settings.leavesEnabled;
+  // والحقول المقصورة على أدوار معينة (زي المرتب) مابتظهرش لغيرهم
+  req.fieldOn = res.locals.fieldOn = (f) =>
+    (f.module !== 'leaves' || settings.leavesEnabled) && (!f.roles || (!!req.session.user && f.roles.includes(req.session.user.role)));
   res.locals.ROLES = ROLES;
   res.locals.PERMS = PERMS;
   res.locals.resources = resources;
@@ -205,6 +207,37 @@ app.post('/password', (req, res) => {
 });
 
 // ---------- شاشات عامة لكل الأقسام (إضافة / تعديل / حذف / بحث) ----------
+// ---------- استيراد الموظفين من Excel ----------
+const { parseEmployees, importEmployees } = require('./import-employees');
+app.get('/r/employees/import', need('employees', 'edit'), (req, res) => res.render('import'));
+app.post('/r/employees/import', need('employees', 'edit'), express.raw({ type: '*/*', limit: '10mb' }), async (req, res) => {
+  const tr = res.locals.t;
+  try {
+    if (!req.body || !req.body.length) throw new Error('اختار ملف Excel الأول');
+    const list = await parseEmployees(req.body);
+    if (!list.length) throw new Error('الملف مافيهوش موظفين');
+    if (req.query.preview) return res.json({ ok: true, rows: list });
+    res.json({ ok: true, ...importEmployees(db, list) });
+  } catch (e) {
+    const msg = /zip|spreadsheet|xlsx/i.test(e.message) ? 'الملف ده مش ملف Excel (.xlsx)' : e.message;
+    res.status(400).json({ ok: false, error: tr(msg) });
+  }
+});
+
+// ---------- بيانات تجريبية / بداية جديدة (مدير النظام) ----------
+const { seedDemo, clearData } = require('./demo');
+app.post('/settings/demo', need('users', 'edit'), (req, res) => {
+  const n = seedDemo(db, { keepEmployees: true });
+  flash(req, 'ok', ['تمت إضافة بيانات تجريبية (إنتاج وحضور آخر أسبوعين) على {0} موظف', n]);
+  res.redirect('/');
+});
+app.post('/settings/clear', need('users', 'edit'), (req, res) => {
+  if (req.body.confirm !== 'مسح' && req.body.confirm !== 'DELETE') { flash(req, 'err', 'لازم تكتب كلمة التأكيد علشان المسح يتم'); return res.redirect('/settings'); }
+  clearData(db, { keepEmployees: !!req.body.keep_employees });
+  flash(req, 'ok', 'تم مسح البيانات');
+  res.redirect('/settings');
+});
+
 const refOptions = (f) => {
   const label = f.refLabel || 'name';
   return db.prepare(`SELECT id, ${label === 'name' ? "COALESCE(code || ' - ','') || name" : label} AS label FROM ${f.ref} ORDER BY label`).all();
@@ -254,13 +287,13 @@ app.get('/r/:res/:id/edit', getRes, needRes('edit'), (req, res) => {
 app.post(['/r/:res', '/r/:res/:id'], getRes, needRes('edit'), (req, res) => {
   const r = req.r, id = req.params.id ? Number(req.params.id) : null;
   const row = {};
-  for (const f of r.fields) {
+  for (const f of r.fields.filter(req.fieldOn)) { // الحقول المخفية مابتتغيرش
     let v = req.body[f.name];
     v = v === undefined || v === '' ? null : String(v).trim();
     if (v !== null && (f.type === 'number' || f.type === 'ref')) v = Number(v);
     row[f.name] = v;
   }
-  const missing = r.fields.find((f) => f.required && (row[f.name] === null || Number.isNaN(row[f.name])));
+  const missing = r.fields.filter(req.fieldOn).find((f) => f.required && (row[f.name] === null || Number.isNaN(row[f.name])));
   let error = missing ? ['حقل "{0}" مطلوب', missing.label] : r.validate && r.validate(row, db, id);
   if (!error) {
     r.beforeSave && r.beforeSave(row, db);

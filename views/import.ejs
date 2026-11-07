@@ -1,0 +1,44 @@
+<%- include('partials/header', { title: 'استيراد الموظفين من Excel' }) %>
+<h1><%= t('استيراد الموظفين من Excel') %></h1>
+<div class="card form">
+  <p><%= t('اختار ملف Excel (.xlsx) فيه بيانات الموظفين. لازم يكون فيه عمود "الاسم"، والأعمدة دي بتتقري لو موجودة:') %></p>
+  <p class="muted"><%= t('الكود، الاسم، الرقم القومي، الهاتف، القسم، الوظيفة، المرتب، تاريخ التعيين، نشط، المستهدف اليومي') %></p>
+  <p class="muted"><%= t('لو الموظف موجود قبل كده (نفس الكود أو الرقم القومي أو الاسم) بياناته بتتحدث، ومش بيتكرر.') %></p>
+  <label><%= t('ملف Excel') %><input type="file" id="file" accept=".xlsx"></label>
+  <div id="msg"></div>
+  <div class="table-wrap" id="preview"></div>
+  <div class="btns">
+    <button class="btn primary" id="go" disabled><%= t('استيراد') %></button>
+    <a class="btn" href="/r/employees"><%= t('إلغاء') %></a>
+  </div>
+</div>
+<script>
+var T = <%- JSON.stringify({ rows: t('موظف في الملف - راجعهم ودوس استيراد'), done: t('تم: {0} موظف جديد، و{1} اتحدثت بياناتهم'), go: t('اذهب لقائمة الموظفين'), demo: t('تحب تشوف البرنامج بيانات تجريبية على الموظفين دول؟ من الإعدادات دوس «إضافة بيانات تجريبية».'),
+  h: [t('الكود'), t('الاسم'), t('الرقم القومي'), t('التليفون'), t('الوظيفة'), t('تاريخ التعيين')] }) %>;
+var file = document.getElementById('file'), go = document.getElementById('go'), msg = document.getElementById('msg'), pv = document.getElementById('preview');
+function esc(s) { return String(s == null ? '—' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function send(preview) {
+  return fetch('/r/employees/import' + (preview ? '?preview=1' : ''), { method: 'POST', body: file.files[0], headers: { 'content-type': 'application/octet-stream' } }).then(function (r) { return r.json(); });
+}
+file.onchange = function () {
+  go.disabled = true; pv.innerHTML = ''; msg.innerHTML = '';
+  if (!file.files[0]) return;
+  send(true).then(function (j) {
+    if (!j.ok) { msg.innerHTML = '<div class="flash err">' + esc(j.error) + '</div>'; return; }
+    msg.innerHTML = '<div class="flash info">' + j.rows.length + ' ' + T.rows + '</div>';
+    pv.innerHTML = '<table><thead><tr>' + T.h.map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+      j.rows.map(function (e) { return '<tr><td>' + [e.code, e.name, e.national_id, e.phone, e.job_title, e.hire_date].map(esc).join('</td><td>') + '</td></tr>'; }).join('') + '</tbody></table>';
+    go.disabled = false;
+  });
+};
+go.onclick = function () {
+  go.disabled = true;
+  send(false).then(function (j) {
+    if (!j.ok) { msg.innerHTML = '<div class="flash err">' + esc(j.error) + '</div>'; go.disabled = false; return; }
+    pv.innerHTML = '';
+    msg.innerHTML = '<div class="flash ok">' + esc(T.done.replace('{0}', j.added).replace('{1}', j.updated)) + '</div><p class="muted">' + esc(T.demo) + '</p><a class="btn primary" href="/r/employees">' + esc(T.go) + '</a>';
+    go.style.display = 'none';
+  });
+};
+</script>
+<%- include('partials/footer') %>

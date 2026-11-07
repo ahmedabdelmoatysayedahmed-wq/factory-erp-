@@ -94,3 +94,4 @@ tr.late td{background:#fff4f2}
 .days{border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:0 0 14px;display:flex;flex-wrap:wrap;gap:6px 18px}
 .days legend{padding:0 6px;font-weight:600}.days small{flex-basis:100%;color:var(--muted)}
 .form>small{display:block;margin:-6px 0 6px}
+.danger-zone{border-color:#f3c0b9}.danger-btn{background:var(--bad);border-color:var(--bad);color:#fff}
