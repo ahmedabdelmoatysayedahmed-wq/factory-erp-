@@ -15,6 +15,7 @@
 <form method="post" action="/settings/demo" class="card form narrow" onsubmit="return confirm('<%= t('ده هيمسح كل البيانات ما عدا الموظفين والمستخدمين. متأكد؟') %>')">
   <h2><%= t('بيانات تجريبية للتجربة') %></h2>
   <p class="muted"><%= t('بيضيف ماكينات وإسطمبات ومواد خام وأوامر تشغيل، وحضور وإنتاج آخر أسبوعين على الموظفين الموجودين، علشان تشوف شكل البرنامج. بيمسح أي بيانات تانية موجودة (ما عدا الموظفين والمستخدمين).') %></p>
+  <label class="chk"><input type="checkbox" name="reset_employees" value="1" <%= noEmployees ? 'checked' : '' %>> <%= t('استخدم قائمة موظفين المصنع (16 موظف) بدل الموظفين الحاليين') %></label>
   <button class="btn"><%= t('إضافة بيانات تجريبية') %></button>
 </form>
 

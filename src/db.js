@@ -89,6 +89,7 @@ db.getSettings = () => {
     leavesEnabled: s.leaves_enabled === '1',
   };
 };
+db.getSetting = (k) => (db.prepare('SELECT value FROM settings WHERE key=?').get(k) || {}).value;
 db.setSetting = (k, v) => db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(k, String(v));
 // هل التاريخ ده يوم راحة أسبوعية؟
 db.isOffDay = (date, settings = db.getSettings()) => settings.weeklyOff.includes(new Date(date + 'T00:00:00Z').getUTCDay());

@@ -115,6 +115,13 @@ test('full workflow', async () => {
   assert.doesNotMatch((await req('GET', '/r/production_logs')).text, /مكبس حقن 1/);
   assert.match((await req('GET', '/r/employees')).text, /موظف تجريبي أول/);
 
+  // قائمة موظفين المصنع في البيانات التجريبية
+  await req('POST', '/settings/demo', { reset_employees: '1' });
+  const roster = (await req('GET', '/r/employees')).text;
+  assert.match(roster, /يوسف احمد عبدالمعطى/);
+  assert.doesNotMatch(roster, /موظف تجريبي أول/);
+  assert.match((await req('GET', '/r/production_logs')).text, /عبد النبى ابو حسيبه/);
+
   // صلاحيات: أمين مخزن مايقدرش يدخل الإنتاج أو الموظفين
   await req('POST', '/users', { username: 'store', full_name: 'أمين', role: 'storekeeper', password: 'store123', active: '1' });
   const s = client();

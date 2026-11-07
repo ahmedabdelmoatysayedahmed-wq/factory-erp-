@@ -187,7 +187,8 @@ app.post('/users', need('users', 'edit'), (req, res) => {
 
 // ---------- الإعدادات (مدير النظام) ----------
 const DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
-app.get('/settings', need('users', 'edit'), (req, res) => res.render('settings', { DAYS }));
+app.get('/settings', need('users', 'edit'), (req, res) =>
+  res.render('settings', { DAYS, noEmployees: !db.prepare('SELECT 1 FROM employees LIMIT 1').get() }));
 app.post('/settings', need('users', 'edit'), (req, res) => {
   const off = [].concat(req.body.weekly_off || []).map(Number).filter((n) => n >= 0 && n <= 6);
   db.setSetting('weekly_off', off.join(','));
@@ -225,9 +226,14 @@ app.post('/r/employees/import', need('employees', 'edit'), express.raw({ type: '
 });
 
 // ---------- بيانات تجريبية / بداية جديدة (مدير النظام) ----------
-const { seedDemo, clearData } = require('./demo');
+const { seedDemo, clearData, hasOnlyOldFakeEmployees } = require('./demo');
+// مرة واحدة: لو قاعدة البيانات فيها الموظفين الوهميين القدام بس، نعيد البيانات التجريبية بموظفين المصنع
+if (db.getSetting('roster_v1') !== '1') {
+  if (hasOnlyOldFakeEmployees(db)) { seedDemo(db, { resetEmployees: true }); console.log('Demo data updated with the factory employees list'); }
+  db.setSetting('roster_v1', '1');
+}
 app.post('/settings/demo', need('users', 'edit'), (req, res) => {
-  const n = seedDemo(db, { keepEmployees: true });
+  const n = seedDemo(db, { keepEmployees: true, resetEmployees: !!req.body.reset_employees });
   flash(req, 'ok', ['تمت إضافة بيانات تجريبية (إنتاج وحضور آخر أسبوعين) على {0} موظف', n]);
   res.redirect('/');
 });

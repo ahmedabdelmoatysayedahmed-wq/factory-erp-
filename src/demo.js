@@ -1,4 +1,7 @@
 // بيانات تجريبية للعرض والتدريب
+const ROSTER = require('./demo-employees');
+// أسامي الموظفين الوهميين اللي كانت في النسخ القديمة من البيانات التجريبية
+const OLD_FAKE = ['محمد علي', 'أحمد حسن', 'محمود سيد', 'كريم سمير', 'مصطفى عادل', 'عمرو خالد', 'إسلام فتحي', 'هاني رمضان', 'سامح نبيل', 'ياسر جمال'];
 const TABLES = ['production_logs', 'stock_movements', 'attendance', 'leaves', 'production_orders', 'molds', 'assets', 'materials', 'products', 'machines'];
 
 // مسح البيانات (المستخدمين والإعدادات مابيتمسحوش)
@@ -11,7 +14,8 @@ function clearData(db, { keepEmployees = false } = {}) {
 
 // بيمسح كل البيانات (ما عدا الموظفين لو keepEmployees) ويحط بيانات تجريبية لآخر أسبوعين
 // بيرجع عدد الموظفين اللي اتعملهم حضور
-function seedDemo(db, { keepEmployees = false } = {}) {
+function seedDemo(db, { keepEmployees = false, resetEmployees = false } = {}) {
+  if (resetEmployees) keepEmployees = false;
   const day = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
   const ins = (t, o) => Number(db.prepare(`INSERT INTO ${t} (${Object.keys(o).join(',')}) VALUES (${Object.keys(o).map(() => '?').join(',')})`).run(...Object.values(o)).lastInsertRowid);
   let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -21,12 +25,8 @@ function seedDemo(db, { keepEmployees = false } = {}) {
     clearData(db, { keepEmployees });
     let emps = keepEmployees ? db.prepare(`SELECT id, job_title, daily_target FROM employees WHERE status='active' ORDER BY id`).all() : [];
     if (!emps.length) {
-      const fake = [['محمد علي', 'مشغل ماكينة', 600], ['أحمد حسن', 'مشغل ماكينة', 600], ['محمود سيد', 'مشغل ماكينة', 550], ['كريم سمير', 'مشغل ماكينة', 600],
-        ['مصطفى عادل', 'مشغل ماكينة', 550], ['عمرو خالد', 'فني صيانة', null], ['إسلام فتحي', 'مشرف وردية', null], ['هاني رمضان', 'أمين مخزن', null],
-        ['سامح نبيل', 'عامل تعبئة', 800], ['ياسر جمال', 'عامل تعبئة', 800]];
-      emps = fake.map(([name, job, target], i) => ({ id: ins('employees', { code: 'E' + String(i + 1).padStart(2, '0'), name, job_title: job,
-        department: job.includes('تعبئة') ? 'التعبئة' : job.includes('مخزن') ? 'المخزن' : 'الإنتاج', daily_target: target,
-        hire_date: '2024-0' + (1 + (i % 9)) + '-01', status: 'active' }), job_title: job, daily_target: target }));
+      // قائمة موظفين المصنع (src/demo-employees.js)
+      emps = ROSTER.map((e) => ({ id: ins('employees', { ...e, status: 'active' }), job_title: e.job_title, daily_target: null }));
     }
     // العمال اللي هيشتغلوا على الماكينات: الأولوية للي وظيفتهم عامل/مشغل
     const isWorker = (e) => /عامل|مشغل|operator|worker/i.test(e.job_title || '');
@@ -69,4 +69,10 @@ function seedDemo(db, { keepEmployees = false } = {}) {
   return count;
 }
 
-module.exports = { seedDemo, clearData };
+// هل الموظفين الموجودين هما بس الموظفين الوهميين القدام؟
+function hasOnlyOldFakeEmployees(db) {
+  const names = db.prepare('SELECT name FROM employees').all().map((r) => r.name);
+  return names.length > 0 && names.every((n) => OLD_FAKE.includes(n));
+}
+
+module.exports = { seedDemo, clearData, hasOnlyOldFakeEmployees, ROSTER };

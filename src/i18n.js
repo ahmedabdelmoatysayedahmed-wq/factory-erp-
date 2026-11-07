@@ -6,7 +6,7 @@ const EN = {
   'تعديل': 'Edit', 'حذف': 'Delete', 'إضافة': 'Add', 'بحث...': 'Search...', 'من': 'From', 'إلى': 'To', 'تصفية': 'Filter', 'مسح': 'Clear',
   'الكل': 'All', 'لا توجد بيانات': 'No data', 'متأكد من الحذف؟': 'Are you sure you want to delete?', '— اختر —': '— Select —',
   'حفظ وإضافة جديد': 'Save & add another', 'عرض': 'Show', 'طباعة': 'Print', 'English': 'English', 'عربي': 'عربي',
-  'القائمة': 'Menu', 'المرتب': 'Salary', 'الرقم القومي': 'National ID', 'استيراد من Excel': 'Import from Excel', 'استيراد الموظفين من Excel': 'Import Employees from Excel',
+  'القائمة': 'Menu', 'استخدم قائمة موظفين المصنع (16 موظف) بدل الموظفين الحاليين': 'Use the factory employee list (16 employees) instead of the current employees', 'المرتب': 'Salary', 'الرقم القومي': 'National ID', 'استيراد من Excel': 'Import from Excel', 'استيراد الموظفين من Excel': 'Import Employees from Excel',
   'اختار ملف Excel (.xlsx) فيه بيانات الموظفين. لازم يكون فيه عمود "الاسم"، والأعمدة دي بتتقري لو موجودة:': 'Choose an Excel file (.xlsx) with employee data. It must have a "Name" column; these columns are read if present:',
   'الكود، الاسم، الرقم القومي، الهاتف، القسم، الوظيفة، المرتب، تاريخ التعيين، نشط، المستهدف اليومي': 'Code, Name, National ID, Phone, Department, Job Title, Salary, Hire Date, Active, Daily Target',
   'لو الموظف موجود قبل كده (نفس الكود أو الرقم القومي أو الاسم) بياناته بتتحدث، ومش بيتكرر.': 'Existing employees (same code, national ID or name) are updated, not duplicated.',
