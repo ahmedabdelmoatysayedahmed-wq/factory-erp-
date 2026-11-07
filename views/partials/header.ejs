@@ -11,7 +11,7 @@
   const groups = [
     ['الرئيسية', [['/', 'لوحة التحكم', 'dashboard'], ['/reports', 'تقارير الإنتاجية', 'reports']]],
     ['الإنتاج', [['/r/production_logs', 'الإنتاج اليومي', 'production_logs'], ['/r/production_orders', 'أوامر التشغيل', 'production_orders'], ['/r/products', 'المنتجات', 'products']]],
-    ['المعدات', [['/r/machines', 'الماكينات', 'machines'], ['/r/molds', 'الإسطمبات', 'molds'], ['/r/assets', 'الأصول', 'assets']]],
+    ['المعدات', [['/r/machines', 'الماكينات', 'machines'], ['/r/molds', 'الإسطمبات', 'molds'], ['/r/upcoming_molds', 'الإسطمبات القادمة', 'upcoming_molds', 'sub'], ['/r/assets', 'الأصول', 'assets']]],
     ['المخزن', [['/r/materials', 'المواد الخام', 'materials'], ['/r/stock_movements', 'حركات المخزن', 'stock_movements']]],
     ['الموظفين', [['/r/employees', 'الموظفين', 'employees'], ['/attendance', 'الحضور والانصراف', 'attendance'], ['/r/leaves', 'الإجازات', 'leaves']]],
     ['النظام', [['/users', 'المستخدمين والصلاحيات', 'users'], ['/settings', 'الإعدادات', 'users']]],
@@ -31,8 +31,8 @@
 <nav class="side">
   <% for (const [g, items] of groups) { const vis = items.filter(i => can(i[2])); if (!vis.length) continue; %>
     <div class="grp"><%= t(g) %></div>
-    <% for (const [href, label] of vis) { const act = href === '/' ? path === '/' : path.startsWith(href); %>
-      <a href="<%= href %>" class="<%= act ? 'active' : '' %>"><%= t(label) %></a>
+    <% for (const [href, label, , sub] of vis) { const act = href === '/' ? path === '/' : (path === href || path.startsWith(href + '/')); %>
+      <a href="<%= href %>" class="<%= act ? 'active' : '' %> <%= sub ? 'sub' : '' %>"><%= sub ? '↳ ' : '' %><%= t(label) %></a>
     <% } %>
   <% } %>
 </nav>

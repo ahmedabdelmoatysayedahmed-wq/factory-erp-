@@ -60,6 +60,10 @@ CREATE TABLE IF NOT EXISTS production_logs (
 CREATE TABLE IF NOT EXISTS attendance (
   id INTEGER PRIMARY KEY, employee_id INTEGER NOT NULL REFERENCES employees(id), date TEXT NOT NULL,
   check_in TEXT, check_out TEXT, status TEXT NOT NULL, notes TEXT, UNIQUE(employee_id, date));
+CREATE TABLE IF NOT EXISTS upcoming_molds (
+  id INTEGER PRIMARY KEY, code TEXT UNIQUE, name TEXT NOT NULL, name_en TEXT, producer TEXT, agent TEXT,
+  status TEXT DEFAULT 'manufacturing', cavities INTEGER, order_date TEXT, expected_date TEXT,
+  price REAL, currency TEXT, notes TEXT);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS leaves (
   id INTEGER PRIMARY KEY, employee_id INTEGER NOT NULL REFERENCES employees(id), type TEXT NOT NULL,
@@ -79,6 +83,8 @@ addColumn('employees', 'national_id', 'TEXT');
 addColumn('employees', 'salary', 'REAL');
 addColumn('molds', 'name_en', 'TEXT');
 addColumn('products', 'name_en', 'TEXT');
+addColumn('molds', 'producer', 'TEXT');
+addColumn('molds', 'agent', 'TEXT');
 
 // الإعدادات الافتراضية: الجمعة راحة أسبوعية، وقسم الإجازات مقفول
 const defaults = { weekly_off: '5', leaves_enabled: '0' };

@@ -91,6 +91,7 @@ app.get('/', (req, res) => {
     scrap: one(`SELECT COALESCE(SUM(qty_scrap),0) s FROM production_logs WHERE date=?`, d).s,
     downtime: one(`SELECT COALESCE(SUM(downtime_minutes),0) s FROM production_logs WHERE date=?`, d).s,
     pendingLeaves: one(`SELECT COUNT(*) c FROM leaves WHERE status='pending'`).c,
+    upcomingMolds: one(`SELECT COUNT(*) c FROM upcoming_molds`).c,
   };
   const machines = all(`SELECT m.*, COALESCE(SUM(l.qty_produced),0) produced, COALESCE(SUM(l.hours_worked),0) hours
     FROM machines m LEFT JOIN production_logs l ON l.machine_id=m.id AND l.date=? GROUP BY m.id ORDER BY m.code`, d);
@@ -230,7 +231,7 @@ app.post('/r/:res/import', getImporter, express.raw({ type: '*/*', limit: '10mb'
 });
 
 // ---------- بيانات تجريبية / بداية جديدة (مدير النظام) ----------
-const { seedDemo, clearData, hasOnlyOldFakeEmployees, hasOnlyOldFakeMolds } = require('./demo');
+const { seedDemo, clearData, hasOnlyOldFakeEmployees, hasOnlyOldFakeMolds, hasAllDemoMoldsInFactory } = require('./demo');
 // مرة واحدة: لو قاعدة البيانات فيها الموظفين الوهميين القدام بس، نعيد البيانات التجريبية بموظفين المصنع
 if (db.getSetting('roster_v1') !== '1') {
   if (hasOnlyOldFakeEmployees(db)) { seedDemo(db, { resetEmployees: true }); console.log('Demo data updated with the factory employees list'); }
@@ -240,6 +241,11 @@ if (db.getSetting('roster_v1') !== '1') {
 if (db.getSetting('molds_v1') !== '1') {
   if (hasOnlyOldFakeMolds(db)) { seedDemo(db, { keepEmployees: true }); console.log('Demo data updated with the factory molds list'); }
   db.setSetting('molds_v1', '1');
+}
+// مرة واحدة: الإسطمبات التجريبية تتنقل لـ «الإسطمبات القادمة» (ماعدا 3 شغالين في الديمو)
+if (db.getSetting('upcoming_v1') !== '1') {
+  if (hasAllDemoMoldsInFactory(db)) { seedDemo(db, { keepEmployees: true }); console.log('Demo molds moved to Upcoming Molds'); }
+  db.setSetting('upcoming_v1', '1');
 }
 app.post('/settings/demo', need('users', 'edit'), (req, res) => {
   const n = seedDemo(db, { keepEmployees: true, resetEmployees: !!req.body.reset_employees });
@@ -275,7 +281,7 @@ app.get('/r/:res', getRes, needRes('view'), (req, res) => {
   const dateField = r.fields.find((f) => f.type === 'date' && f.required);
   if (dateField && req.query.from) { where.push(`t.${dateField.name} >= ?`); params.push(req.query.from); }
   if (dateField && req.query.to) { where.push(`t.${dateField.name} <= ?`); params.push(req.query.to); }
-  for (const f of r.fields.filter((f) => f.type === 'ref' || f.type === 'select')) {
+  for (const f of r.fields.filter((f) => f.type === 'ref' || f.type === 'select' || f.filter)) {
     if (req.query[f.name]) { where.push(`t.${f.name} = ?`); params.push(req.query[f.name]); }
   }
   const rows = db.prepare(`SELECT ${r.select || 't.*'} FROM ${req.rk} t ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
@@ -283,8 +289,10 @@ app.get('/r/:res', getRes, needRes('view'), (req, res) => {
   for (const row of rows) for (const c of r.computed || []) if (c.calc) row[c.name] = c.calc(row);
   const refs = {};
   for (const f of r.fields.filter((f) => f.type === 'ref')) refs[f.name] = Object.fromEntries(refOptions(f).map((o) => [o.id, o.label]));
-  const filters = r.fields.filter((f) => f.type === 'ref' || f.type === 'select').map((f) => ({
-    ...f, choices: f.type === 'ref' ? refOptions(f).map((o) => ({ value: o.id, label: o.label })) : f.options }));
+  const filters = r.fields.filter((f) => f.type === 'ref' || f.type === 'select' || f.filter).map((f) => ({
+    ...f, choices: f.type === 'ref' ? refOptions(f).map((o) => ({ value: o.id, label: o.label }))
+      : f.filter ? db.prepare(`SELECT DISTINCT ${f.name} v FROM ${req.rk} WHERE ${f.name} IS NOT NULL ORDER BY v`).all().map((x) => ({ value: x.v, label: x.v }))
+      : f.options }));
   res.render('list', { r, rk: req.rk, rows, refs, q, query: req.query, dateField, filters });
 });
 
@@ -328,6 +336,24 @@ app.post(['/r/:res', '/r/:res/:id'], getRes, needRes('edit'), (req, res) => {
   }
   showForm(req, res, { ...row, id }, error);
 });
+// استلام إسطمبة قادمة: بتتنقل لقائمة الإسطمبات (ومعاها منتج بنفس رقم القطعة)
+app.post('/r/upcoming_molds/:id/receive', need('molds', 'edit'), (req, res) => {
+  const u = db.prepare('SELECT * FROM upcoming_molds WHERE id=?').get(req.params.id);
+  if (!u) return res.status(404).render('error', { msg: 'السجل غير موجود' });
+  db.transaction(() => {
+    const p = db.prepare('SELECT id FROM products WHERE code=?').get(u.code);
+    const productId = p ? p.id : Number(db.prepare("INSERT INTO products (code, name, name_en, unit) VALUES (?,?,?,'قطعة')").run(u.code, u.name, u.name_en).lastInsertRowid);
+    const m = db.prepare('SELECT id FROM molds WHERE code=?').get(u.code);
+    const notes = [u.notes, u.price ? `السعر: ${u.price} ${u.currency || ''}`.trim() : null].filter(Boolean).join(' - ') || null;
+    if (m) db.prepare('UPDATE molds SET name=?, name_en=?, producer=?, agent=?, product_id=? WHERE id=?').run(u.name, u.name_en, u.producer, u.agent, productId, m.id);
+    else db.prepare("INSERT INTO molds (code, name, name_en, producer, agent, product_id, cavities, status, notes) VALUES (?,?,?,?,?,?,?,'available',?)")
+      .run(u.code, u.name, u.name_en, u.producer, u.agent, productId, u.cavities || 1, notes);
+    db.prepare('DELETE FROM upcoming_molds WHERE id=?').run(u.id);
+  })();
+  flash(req, 'ok', ['تم استلام الإسطمبة «{0}» ونقلها لقائمة الإسطمبات', u.name]);
+  res.redirect('/r/upcoming_molds');
+});
+
 app.post('/r/:res/:id/delete', getRes, needRes('edit'), (req, res) => {
   try {
     db.prepare(`DELETE FROM ${req.rk} WHERE id=?`).run(req.params.id);

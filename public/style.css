@@ -12,6 +12,7 @@ a{color:var(--pri);text-decoration:none}
 .side .grp{font-size:12px;color:var(--muted);padding:12px 18px 4px;font-weight:600}
 .side a{display:block;padding:8px 18px;color:var(--text);border-inline-start:3px solid transparent}
 .side a:hover{background:var(--bg)}
+.side a.sub{padding-inline-start:30px;font-size:14px}.link.strong{font-weight:700;color:var(--ok)}
 .side a.active{background:var(--pri-2);border-inline-start-color:var(--pri);color:var(--pri);font-weight:600}
 main{flex:1;padding:20px;min-width:0}
 main.center{display:flex;justify-content:center;align-items:center;min-height:100vh}

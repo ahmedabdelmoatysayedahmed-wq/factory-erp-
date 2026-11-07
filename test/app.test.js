@@ -134,8 +134,29 @@ test('full workflow', async () => {
   assert.match(roster, /يوسف احمد عبدالمعطى/);
   assert.doesNotMatch(roster, /موظف تجريبي أول/);
   assert.match((await req('GET', '/r/production_logs')).text, /عبد النبى ابو حسيبه/);
-  assert.match((await req('GET', '/r/molds')).text, /\(101\)/); // إسطمبات المصنع كلها
+  // الديمو: 3 إسطمبات في المصنع والباقي (98) في الإسطمبات القادمة
+  assert.match((await req('GET', '/r/molds')).text, /\(3\)/);
   assert.match((await req('GET', '/r/molds')).text, /ANMBBS027 RA/);
+  const up = (await req('GET', '/r/upcoming_molds')).text;
+  assert.match(up, /\(98\)/);
+  assert.match(up, /SHIDA/);
+  assert.match((await req('GET', '/r/upcoming_molds?producer=SHIDA')).text, /\(23\)/); // فلتر المصنّع
+  assert.match((await req('GET', '/?date=2026-11-07')).text, /إسطمبات قادمة/);
+
+  // استلام إسطمبة قادمة => بتتنقل للإسطمبات ومعاها منتج
+  const firstUp = /action="\/r\/upcoming_molds\/(\d+)\/receive"/.exec(up)[1];
+  const recv = await req('POST', `/r/upcoming_molds/${firstUp}/receive`, {});
+  assert.equal(recv.location, '/r/upcoming_molds');
+  assert.match((await req('GET', '/r/upcoming_molds')).text, /\(97\)/);
+  assert.match((await req('GET', '/r/molds')).text, /\(4\)/);
+
+  // استيراد القادمة: العمود اللي من غير عنوان جنب المصنّع = الوكيل، واللي اتستلم مايتضافش تاني
+  const ux = fs.readFileSync(path.join(__dirname, 'fixtures', 'upcoming-sample.xlsx'));
+  const upv = JSON.parse((await req('POST', '/r/upcoming_molds/import?preview=1', null, ux)).text);
+  assert.equal(upv.rows[0].agent, 'وكيل تجريبي');
+  assert.equal(upv.rows[0].producer, 'TEST MAKER');
+  const ures = JSON.parse((await req('POST', '/r/upcoming_molds/import', null, ux)).text);
+  assert.deepEqual(ures, { ok: true, added: 1, updated: 0, skipped: 1 }); // ANMBBS027 RA موجودة في الإسطمبات
   // تسجيل إنتاج بالإسطمبة بس => المنتج بيتملى لوحده
   await req('POST', '/r/production_logs', { date: '2025-01-15', employee_id: '1', machine_id: '1', mold_id: '1', qty_produced: '10' });
   assert.match((await req('GET', '/r/production_logs?mold_id=1&from=2025-01-15&to=2025-01-15')).text, /data-label="المنتج">(?!—)[^<]+</);

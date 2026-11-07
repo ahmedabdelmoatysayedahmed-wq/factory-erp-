@@ -14,7 +14,7 @@
 </div>
 <script>
 var URL_ = '/r/<%= rk %>/import';
-var T = <%- JSON.stringify({ rows: t('صف في الملف - راجعهم ودوس استيراد'), done: t('تم: {0} جديد، و{1} اتحدثت بياناتهم'), go: t('رجوع للقائمة'),
+var T = <%- JSON.stringify({ rows: t('صف في الملف - راجعهم ودوس استيراد'), done: t('تم: {0} جديد، و{1} اتحدثت بياناتهم'), skipped: t('و{0} موجودين في الإسطمبات خلاص فماتضافوش'), go: t('رجوع للقائمة'),
   keys: imp.preview.map(function (c) { return c[0]; }), h: imp.preview.map(function (c) { return t(c[1]); }) }).replace(/</g, '\\u003c') %>;
 var file = document.getElementById('file'), go = document.getElementById('go'), msg = document.getElementById('msg'), pv = document.getElementById('preview');
 function esc(s) { return String(s == null ? '—' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -37,7 +37,7 @@ go.onclick = function () {
   send(false).then(function (j) {
     if (!j.ok) { msg.innerHTML = '<div class="flash err">' + esc(j.error) + '</div>'; go.disabled = false; return; }
     pv.innerHTML = '';
-    msg.innerHTML = '<div class="flash ok">' + esc(T.done.replace('{0}', j.added).replace('{1}', j.updated)) + '</div><a class="btn primary" href="/r/<%= rk %>">' + esc(T.go) + '</a>';
+    msg.innerHTML = '<div class="flash ok">' + esc(T.done.replace('{0}', j.added).replace('{1}', j.updated) + (j.skipped ? '، ' + T.skipped.replace('{0}', j.skipped) : '')) + '</div><a class="btn primary" href="/r/<%= rk %>">' + esc(T.go) + '</a>';
     go.style.display = 'none';
   });
 };

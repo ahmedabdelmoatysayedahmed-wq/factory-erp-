@@ -14,7 +14,8 @@ test('old fake demo employees are replaced by the factory roster on startup', ()
   assert.ok(names.includes('يوسف احمد عبدالمعطى'));
   assert.ok(db.prepare('SELECT COUNT(*) c FROM production_logs').get().c > 0);
   assert.equal(db.getSetting('roster_v1'), '1');
-  assert.equal(db.prepare('SELECT COUNT(*) c FROM molds').get().c, 101);
+  assert.equal(db.prepare('SELECT COUNT(*) c FROM molds').get().c, 3);
+  assert.equal(db.prepare('SELECT COUNT(*) c FROM upcoming_molds').get().c, 98);
   assert.equal(db.getSetting('molds_v1'), '1');
 });
 
@@ -32,6 +33,19 @@ test('old fake demo molds are replaced by the factory molds, employees kept', ()
       emp: db.prepare('SELECT name FROM employees').all().map((r) => r.name) }));
   `], { cwd: path.join(__dirname, '..'), env: { ...process.env, DB_FILE: path.join(tmp, 'x.db'), NO_BACKUP: '1' } }).toString().trim().split('\n').pop();
   const r = JSON.parse(out);
-  assert.equal(r.molds, 101);
+  assert.equal(r.molds, 3);
   assert.deepEqual(r.emp, ['موظف حقيقي']);
+});
+
+test('a database with all 101 molds in the factory list moves them to Upcoming Molds once', () => {
+  const { execFileSync } = require('child_process');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'erp-m3-'));
+  const out = execFileSync(process.execPath, ['-e', `
+    const db = require('./src/db');
+    db.setSetting('roster_v1', '1'); db.setSetting('molds_v1', '1');
+    for (const m of require('./src/demo-molds')) db.prepare('INSERT INTO molds (code, name) VALUES (?, ?)').run(m.code, m.name);
+    require('./src/app');
+    console.log(JSON.stringify({ molds: db.prepare('SELECT COUNT(*) c FROM molds').get().c, up: db.prepare('SELECT COUNT(*) c FROM upcoming_molds').get().c }));
+  `], { cwd: path.join(__dirname, '..'), env: { ...process.env, DB_FILE: path.join(tmp, 'x.db'), NO_BACKUP: '1' } }).toString().trim().split('\n').pop();
+  assert.deepEqual(JSON.parse(out), { molds: 3, up: 98 });
 });

@@ -34,6 +34,14 @@ async function readTable(buffer, columns, requiredKey) {
     const i = header.findIndex((h) => names.includes(h));
     if (i >= 0) col[key] = i;
   }
+  // عمود من غير عنوان جنب عمود معروف (زي الوكيل جنب المصنّع)
+  for (const [key, names] of Object.entries(columns)) {
+    const after = names.find((n) => n.startsWith('@after:'));
+    if (col[key] === undefined && after) {
+      const i = col[after.slice(7)];
+      if (i !== undefined && !header[i + 1]) col[key] = i + 1;
+    }
+  }
   return rows.slice(headerIdx + 1).map((r) => {
     const o = {};
     for (const k of Object.keys(columns)) o[k] = col[k] === undefined ? null : r[col[k]];
@@ -129,6 +137,43 @@ const importers = {
       })();
       return res;
     },
+  },
+};
+
+importers.upcoming_molds = {
+  title: 'استيراد الإسطمبات القادمة من Excel',
+  columnsHint: 'رقم القطعة (Part Number)، المسمى، الوصف (Description)، المصنّع (Producer)، الوكيل / المسؤول (العمود اللي جنب المصنّع لو مالوش عنوان)، الحالة، الوصول المتوقع، عدد العيون، السعر',
+  matchHint: 'لو الإسطمبة موجودة في القادمة (نفس رقم القطعة) بياناتها بتتحدث. ولو اتستلمت خلاص وموجودة في الإسطمبات، مش بتتضاف تاني.',
+  preview: [['code', 'رقم القطعة'], ['name', 'الاسم'], ['producer', 'المصنّع'], ['agent', 'الوكيل / المسؤول']],
+  async parse(buffer) {
+    const rows = await readTable(buffer, {
+      code: ['part number', 'part no', 'part no.', 'رقم القطعة', 'الكود', 'code'],
+      name: ['المسمى', 'الاسم', 'اسم القطعة'],
+      name_en: ['description', 'الوصف', 'الوصف بالإنجليزي', 'name'],
+      producer: ['producer', 'المصنع', 'المصنّع', 'المورد', 'supplier', 'maker'],
+      agent: ['الوكيل', 'المسؤول', 'الوكيل / المسؤول', 'agent', '@after:producer'],
+      status: ['الحالة', 'status'],
+      expected_date: ['الوصول المتوقع', 'تاريخ الوصول', 'eta', 'expected'],
+      cavities: ['عدد العيون', 'cavities', 'cavity no'],
+      price: ['السعر', 'price'],
+    }, 'code');
+    const st = { 'قيد التصنيع': 'manufacturing', 'تجربة': 'trial', 'في الشحن': 'shipping', 'في الجمرك': 'customs' };
+    return rows.filter((r) => clean(r.code) && (clean(r.name) || clean(r.name_en))).map((r) => ({
+      code: clean(r.code), name: clean(r.name) || clean(r.name_en), name_en: clean(r.name_en),
+      producer: clean(r.producer) && clean(r.producer).toUpperCase(), agent: clean(r.agent),
+      status: st[clean(r.status)] || null, expected_date: toDate(r.expected_date), cavities: toNum(r.cavities), price: toNum(r.price),
+    }));
+  },
+  importRows(db, list) {
+    const res = { added: 0, updated: 0, skipped: 0 };
+    db.transaction(() => {
+      for (const m of list) {
+        if (db.prepare('SELECT 1 FROM molds WHERE code=?').get(m.code)) { res.skipped++; continue; } // اتستلمت خلاص
+        const ex = db.prepare('SELECT id FROM upcoming_molds WHERE code=?').get(m.code);
+        upsert(db, 'upcoming_molds', ex ? m : { ...m, status: m.status || 'manufacturing' }, ex && ex.id); res[ex ? 'updated' : 'added']++;
+      }
+    })();
+    return res;
   },
 };
 

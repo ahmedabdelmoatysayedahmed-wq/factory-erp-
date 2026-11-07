@@ -4,6 +4,7 @@ const opt = (o) => Object.entries(o).map(([value, label]) => ({ value, label }))
 const STATUS = {
   employee: { active: 'على رأس العمل', inactive: 'متوقف' },
   machine: { running: 'تعمل', stopped: 'متوقفة', maintenance: 'صيانة', broken: 'عطلانة' },
+  upcoming: { manufacturing: 'قيد التصنيع', trial: 'تجربة (T0)', shipping: 'في الشحن', customs: 'في الجمرك' },
   mold: { available: 'متاحة', in_use: 'على الماكينة', maintenance: 'صيانة', damaged: 'تالفة' },
   asset: { in_service: 'في الخدمة', maintenance: 'صيانة', retired: 'مستبعد' },
   move: { in: 'وارد', out: 'صرف', adjust: 'تسوية (+/-)' },
@@ -69,6 +70,8 @@ const resources = {
       { name: 'name', label: 'الاسم', required: true, list: true },
       { name: 'name_en', label: 'الوصف بالإنجليزي' },
       { name: 'product_id', label: 'المنتج', type: 'ref', ref: 'products' },
+      { name: 'producer', label: 'المصنّع' },
+      { name: 'agent', label: 'الوكيل / المسؤول' },
       { name: 'cavities', label: 'عدد العيون', type: 'number', list: true },
       { name: 'status', label: 'الحالة', type: 'select', options: opt(STATUS.mold), list: true },
       { name: 'location', label: 'مكان التخزين', list: true },
@@ -81,6 +84,25 @@ const resources = {
       { name: 'total_shots', label: 'إجمالي الضربات', fmt: 'int' },
       { name: 'shots_since_maint', label: 'ضربات منذ الصيانة', fmt: 'int' },
     ],
+  },
+  upcoming_molds: {
+    title: 'الإسطمبات القادمة', single: 'إسطمبة قادمة', order: 'producer, code',
+    fields: [
+      { name: 'code', label: 'رقم القطعة', required: true, list: true },
+      { name: 'name', label: 'الاسم', required: true, list: true },
+      { name: 'name_en', label: 'الوصف بالإنجليزي' },
+      { name: 'producer', label: 'المصنّع', list: true, filter: true },
+      { name: 'agent', label: 'الوكيل / المسؤول', list: true, filter: true },
+      { name: 'status', label: 'الحالة', type: 'select', options: opt(STATUS.upcoming), list: true },
+      { name: 'cavities', label: 'عدد العيون', type: 'number' },
+      { name: 'order_date', label: 'تاريخ الطلب', type: 'date' },
+      { name: 'expected_date', label: 'الوصول المتوقع', type: 'date', list: true },
+      { name: 'price', label: 'السعر', type: 'number' },
+      { name: 'currency', label: 'العملة' },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' },
+    ],
+    // زرار في كل صف: لما الإسطمبة توصل المصنع
+    rowActions: [{ action: 'receive', label: 'استلام', confirm: 'استلام الإسطمبة دي ونقلها لقائمة الإسطمبات؟' }],
   },
   assets: {
     title: 'الأصول', single: 'أصل', order: 'code',

@@ -16,6 +16,7 @@ const PERMS = {
   attendance:        { view: ['admin', 'manager', 'hr', 'supervisor', 'viewer'], edit: ['admin', 'manager', 'hr', 'supervisor'] },
   leaves:            { view: ['admin', 'manager', 'hr', 'viewer'], edit: ['admin', 'manager', 'hr'] },
   machines:          { view: ['admin', 'manager', 'supervisor', 'viewer'], edit: ['admin', 'manager', 'supervisor'] },
+  upcoming_molds:    { view: ['admin', 'manager', 'supervisor', 'storekeeper', 'viewer'], edit: ['admin', 'manager', 'supervisor'] },
   molds:             { view: ['admin', 'manager', 'supervisor', 'storekeeper', 'viewer'], edit: ['admin', 'manager', 'supervisor'] },
   assets:            { view: ['admin', 'manager', 'storekeeper', 'viewer'], edit: ['admin', 'manager', 'storekeeper'] },
   products:          { view: ['admin', 'manager', 'supervisor', 'storekeeper', 'viewer'], edit: ['admin', 'manager', 'supervisor'] },
