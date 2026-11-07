@@ -15,13 +15,18 @@ echo    Factory ERP
 echo  ==========================================
 echo.
 
-rem ---------- 1) Node.js ----------
+rem ---------- 1) Node.js (needs 22.13 or newer: built-in SQLite) ----------
 echo [1/4] Checking Node.js ...
-where node >nul 2>nul && goto node_ok
+where node >nul 2>nul || goto node_check_pf
+node -e "require('node:sqlite')" >nul 2>nul && goto node_ok
+echo       Your Node.js is too old. Updating it ...
+goto node_install
+:node_check_pf
 if exist "%ProgramFiles%\nodejs\node.exe" goto node_path
 echo       Node.js not found. Installing it now (this happens only once) ...
+:node_install
 where winget >nul 2>nul && winget install -e --id OpenJS.NodeJS.LTS --silent --accept-source-agreements --accept-package-agreements
-if exist "%ProgramFiles%\nodejs\node.exe" goto node_path
+if exist "%ProgramFiles%\nodejs\node.exe" "%ProgramFiles%\nodejs\node.exe" -e "require('node:sqlite')" >nul 2>nul && goto node_path
 echo       Downloading Node.js installer ...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol='Tls12'; $v=(Invoke-RestMethod https://nodejs.org/dist/index.json | Where-Object { $_.lts } | Select-Object -First 1).version; Invoke-WebRequest \"https://nodejs.org/dist/$v/node-$v-x64.msi\" -OutFile \"$env:TEMP\node-lts.msi\" -UseBasicParsing"
 if errorlevel 1 goto fail_node
@@ -30,6 +35,7 @@ msiexec /i "%TEMP%\node-lts.msi" /passive
 if not exist "%ProgramFiles%\nodejs\node.exe" goto fail_node
 :node_path
 set "PATH=%ProgramFiles%\nodejs;%PATH%"
+node -e "require('node:sqlite')" >nul 2>nul || goto fail_node
 :node_ok
 for /f "delims=" %%v in ('node -v') do echo       Node.js %%v OK
 

@@ -1,4 +1,6 @@
-const Database = require('better-sqlite3');
+// SQLite المدمجة في Node.js نفسها - مش محتاجة أي تجميع (compile) على الجهاز
+process.removeAllListeners('warning'); // إخفاء تحذير "experimental" في نسخ Node القديمة
+const { DatabaseSync } = require('node:sqlite');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
@@ -6,9 +8,14 @@ const path = require('path');
 const dataDir = path.join(__dirname, '..', 'data');
 fs.mkdirSync(dataDir, { recursive: true });
 const dbFile = process.env.DB_FILE || path.join(dataDir, 'factory.db');
-const db = new Database(dbFile);
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+const db = new DatabaseSync(dbFile);
+db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
+
+// db.transaction(fn) => دالة بتشغّل fn جوه BEGIN/COMMIT وبترجع لو حصل خطأ
+db.transaction = (fn) => (...args) => {
+  db.exec('BEGIN');
+  try { const r = fn(...args); db.exec('COMMIT'); return r; } catch (e) { db.exec('ROLLBACK'); throw e; }
+};
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
@@ -82,10 +89,11 @@ if (!process.env.NO_BACKUP) {
   const file = path.join(dir, `factory-${new Date().toISOString().slice(0, 10)}.db`);
   if (!fs.existsSync(file)) {
     fs.mkdirSync(dir, { recursive: true });
-    db.backup(file).then(() => {
+    try {
+      db.prepare('VACUUM INTO ?').run(file);
       const old = fs.readdirSync(dir).filter((f) => /^factory-.*\.db$/.test(f)).sort().slice(0, -30);
       old.forEach((f) => fs.unlinkSync(path.join(dir, f)));
-    }).catch((e) => console.error('Backup failed:', e.message));
+    } catch (e) { console.error('Backup failed:', e.message); }
   }
 }
 
