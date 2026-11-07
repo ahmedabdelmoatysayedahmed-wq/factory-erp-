@@ -147,11 +147,15 @@ importers.upcoming_molds = {
   preview: [['code', 'رقم القطعة'], ['name', 'الاسم'], ['producer', 'المصنّع'], ['agent', 'الوكيل / المسؤول']],
   async parse(buffer) {
     const rows = await readTable(buffer, {
-      code: ['part number', 'part no', 'part no.', 'رقم القطعة', 'الكود', 'code'],
+      code: ['مرجع المورد', 'part number', 'part no', 'part no.', 'رقم القطعة', 'الكود', 'code'],
       name: ['المسمى', 'الاسم', 'اسم القطعة'],
       name_en: ['description', 'الوصف', 'الوصف بالإنجليزي', 'name'],
       producer: ['producer', 'المصنع', 'المصنّع', 'المورد', 'supplier', 'maker'],
       agent: ['الوكيل', 'المسؤول', 'الوكيل / المسؤول', 'agent', '@after:producer'],
+      part_no: ['رقم القطعة عندنا', 'our part no'],
+      oem_no: ['oem', 'oem number', 'رقم oem'],
+      material: ['الخامة', 'خامة المنتج', 'plastic material', 'product material', 'material'],
+      t0_date: ['t0', 'تاريخ التجربة', 'testing date'],
       status: ['الحالة', 'status'],
       expected_date: ['الوصول المتوقع', 'تاريخ الوصول', 'eta', 'expected'],
       cavities: ['عدد العيون', 'cavities', 'cavity no'],
@@ -161,7 +165,8 @@ importers.upcoming_molds = {
     return rows.filter((r) => clean(r.code) && (clean(r.name) || clean(r.name_en))).map((r) => ({
       code: clean(r.code), name: clean(r.name) || clean(r.name_en), name_en: clean(r.name_en),
       producer: clean(r.producer) && clean(r.producer).toUpperCase(), agent: clean(r.agent),
-      status: st[clean(r.status)] || null, expected_date: toDate(r.expected_date), cavities: toNum(r.cavities), price: toNum(r.price),
+      status: st[clean(r.status)] || null, expected_date: toDate(r.expected_date), cavities: clean(r.cavities), price: toNum(r.price),
+      part_no: clean(r.part_no), oem_no: clean(r.oem_no), material: clean(r.material), t0_date: toDate(r.t0_date),
     }));
   },
   importRows(db, list) {

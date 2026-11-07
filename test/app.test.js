@@ -134,21 +134,26 @@ test('full workflow', async () => {
   assert.match(roster, /يوسف احمد عبدالمعطى/);
   assert.doesNotMatch(roster, /موظف تجريبي أول/);
   assert.match((await req('GET', '/r/production_logs')).text, /عبد النبى ابو حسيبه/);
-  // الديمو: 3 إسطمبات في المصنع والباقي (98) في الإسطمبات القادمة
-  assert.match((await req('GET', '/r/molds')).text, /\(3\)/);
+  // الديمو: إسطمبات المصنع (101) في الإسطمبات، واللي بتتصنع في الصين (83) في القادمة
+  assert.match((await req('GET', '/r/molds')).text, /\(101\)/);
   assert.match((await req('GET', '/r/molds')).text, /ANMBBS027 RA/);
+  assert.match((await req('GET', '/r/molds?producer=SHIDA')).text, /\(23\)/); // فلتر المصنّع في الإسطمبات
   const up = (await req('GET', '/r/upcoming_molds')).text;
-  assert.match(up, /\(98\)/);
-  assert.match(up, /SHIDA/);
-  assert.match((await req('GET', '/r/upcoming_molds?producer=SHIDA')).text, /\(23\)/); // فلتر المصنّع
+  assert.match(up, /\(83\)/);
+  assert.match(up, /CYNTIA-01/);
+  assert.doesNotMatch(up, /ANMBBS027 RA/);
+  assert.match((await req('GET', '/r/upcoming_molds?producer=SHIDA')).text, /\(17\)/);
   assert.match((await req('GET', '/?date=2026-11-07')).text, /إسطمبات قادمة/);
 
   // استلام إسطمبة قادمة => بتتنقل للإسطمبات ومعاها منتج
-  const firstUp = /action="\/r\/upcoming_molds\/(\d+)\/receive"/.exec(up)[1];
-  const recv = await req('POST', `/r/upcoming_molds/${firstUp}/receive`, {});
+  // CYNTIA-01 ليها رقم قطعة مزدوج (L/R) => كود الإسطمبة بيبقى مرجع المورد، والعيون R+L 2 => 2
+  const cy = /action="\/r\/upcoming_molds\/(\d+)\/receive"[\s\S]*?CYNTIA-01/.exec(up)[1];
+  const recv = await req('POST', `/r/upcoming_molds/${cy}/receive`, {});
   assert.equal(recv.location, '/r/upcoming_molds');
-  assert.match((await req('GET', '/r/upcoming_molds')).text, /\(97\)/);
-  assert.match((await req('GET', '/r/molds')).text, /\(4\)/);
+  assert.match((await req('GET', '/r/upcoming_molds')).text, /\(82\)/);
+  const molds2 = (await req('GET', '/r/molds?q=CYNTIA-01')).text;
+  assert.match(molds2, /\(1\)/);
+  assert.match(molds2, /data-label="عدد العيون">2</);
 
   // استيراد القادمة: العمود اللي من غير عنوان جنب المصنّع = الوكيل، واللي اتستلم مايتضافش تاني
   const ux = fs.readFileSync(path.join(__dirname, 'fixtures', 'upcoming-sample.xlsx'));

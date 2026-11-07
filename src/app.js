@@ -231,7 +231,7 @@ app.post('/r/:res/import', getImporter, express.raw({ type: '*/*', limit: '10mb'
 });
 
 // ---------- بيانات تجريبية / بداية جديدة (مدير النظام) ----------
-const { seedDemo, clearData, hasOnlyOldFakeEmployees, hasOnlyOldFakeMolds, hasAllDemoMoldsInFactory } = require('./demo');
+const { seedDemo, clearData, hasOnlyOldFakeEmployees, hasOnlyOldFakeMolds, needsUpcomingFix } = require('./demo');
 // مرة واحدة: لو قاعدة البيانات فيها الموظفين الوهميين القدام بس، نعيد البيانات التجريبية بموظفين المصنع
 if (db.getSetting('roster_v1') !== '1') {
   if (hasOnlyOldFakeEmployees(db)) { seedDemo(db, { resetEmployees: true }); console.log('Demo data updated with the factory employees list'); }
@@ -242,10 +242,11 @@ if (db.getSetting('molds_v1') !== '1') {
   if (hasOnlyOldFakeMolds(db)) { seedDemo(db, { keepEmployees: true }); console.log('Demo data updated with the factory molds list'); }
   db.setSetting('molds_v1', '1');
 }
-// مرة واحدة: الإسطمبات التجريبية تتنقل لـ «الإسطمبات القادمة» (ماعدا 3 شغالين في الديمو)
-if (db.getSetting('upcoming_v1') !== '1') {
-  if (hasAllDemoMoldsInFactory(db)) { seedDemo(db, { keepEmployees: true }); console.log('Demo molds moved to Upcoming Molds'); }
-  db.setSetting('upcoming_v1', '1');
+// مرة واحدة: تصحيح البيانات التجريبية - إسطمبات المصنع (101) في «الإسطمبات»،
+// والإسطمبات اللي بتتصنع في الصين (شيتات الموردين) في «الإسطمبات القادمة»
+if (db.getSetting('upcoming_v2') !== '1') {
+  if (needsUpcomingFix(db)) { seedDemo(db, { keepEmployees: true }); console.log('Demo data fixed: factory molds in Molds, molds in China in Upcoming Molds'); }
+  db.setSetting('upcoming_v1', '1'); db.setSetting('upcoming_v2', '1');
 }
 app.post('/settings/demo', need('users', 'edit'), (req, res) => {
   const n = seedDemo(db, { keepEmployees: true, resetEmployees: !!req.body.reset_employees });
@@ -336,18 +337,24 @@ app.post(['/r/:res', '/r/:res/:id'], getRes, needRes('edit'), (req, res) => {
   }
   showForm(req, res, { ...row, id }, error);
 });
-// استلام إسطمبة قادمة: بتتنقل لقائمة الإسطمبات (ومعاها منتج بنفس رقم القطعة)
+// استلام إسطمبة قادمة: بتتنقل لقائمة الإسطمبات (ومعاها منتج بنفس الرقم)
+// كود الإسطمبة = رقم القطعة عندنا لو معروف، وإلا مرجع المورد
 app.post('/r/upcoming_molds/:id/receive', need('molds', 'edit'), (req, res) => {
   const u = db.prepare('SELECT * FROM upcoming_molds WHERE id=?').get(req.params.id);
   if (!u) return res.status(404).render('error', { msg: 'السجل غير موجود' });
+  const code = u.part_no && !/[\/,]/.test(u.part_no) && !db.prepare('SELECT 1 FROM molds WHERE code=?').get(u.part_no) ? u.part_no : u.code;
+  const cav = String(u.cavities || '').match(/\d+/g);
+  const cavities = cav ? cav.map(Number).reduce((a, b) => a + b, 0) : 1; // 1+1 => 2
+  const notes = [u.notes, u.code !== code ? `مرجع المورد: ${u.code}` : null, u.part_no && u.part_no !== code ? `رقم القطعة: ${u.part_no}` : null,
+    u.oem_no ? `OEM: ${u.oem_no}` : null, u.material ? `الخامة: ${u.material}` : null, u.steel ? `الصلب: ${u.steel}` : null,
+    u.cavities ? `العيون: ${u.cavities}` : null, u.price ? `السعر: ${u.price} ${u.currency || ''}`.trim() : null].filter(Boolean).join(' - ') || null;
   db.transaction(() => {
-    const p = db.prepare('SELECT id FROM products WHERE code=?').get(u.code);
-    const productId = p ? p.id : Number(db.prepare("INSERT INTO products (code, name, name_en, unit) VALUES (?,?,?,'قطعة')").run(u.code, u.name, u.name_en).lastInsertRowid);
-    const m = db.prepare('SELECT id FROM molds WHERE code=?').get(u.code);
-    const notes = [u.notes, u.price ? `السعر: ${u.price} ${u.currency || ''}`.trim() : null].filter(Boolean).join(' - ') || null;
-    if (m) db.prepare('UPDATE molds SET name=?, name_en=?, producer=?, agent=?, product_id=? WHERE id=?').run(u.name, u.name_en, u.producer, u.agent, productId, m.id);
+    const p = db.prepare('SELECT id FROM products WHERE code=?').get(code);
+    const productId = p ? p.id : Number(db.prepare("INSERT INTO products (code, name, name_en, unit) VALUES (?,?,?,'قطعة')").run(code, u.name, u.name_en).lastInsertRowid);
+    const m = db.prepare('SELECT id FROM molds WHERE code=?').get(code);
+    if (m) db.prepare('UPDATE molds SET name=?, name_en=?, producer=?, agent=?, product_id=?, notes=? WHERE id=?').run(u.name, u.name_en, u.producer, u.agent, productId, notes, m.id);
     else db.prepare("INSERT INTO molds (code, name, name_en, producer, agent, product_id, cavities, status, notes) VALUES (?,?,?,?,?,?,?,'available',?)")
-      .run(u.code, u.name, u.name_en, u.producer, u.agent, productId, u.cavities || 1, notes);
+      .run(code, u.name, u.name_en, u.producer, u.agent, productId, cavities, notes);
     db.prepare('DELETE FROM upcoming_molds WHERE id=?').run(u.id);
   })();
   flash(req, 'ok', ['تم استلام الإسطمبة «{0}» ونقلها لقائمة الإسطمبات', u.name]);

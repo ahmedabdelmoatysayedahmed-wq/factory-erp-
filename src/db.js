@@ -85,6 +85,7 @@ addColumn('molds', 'name_en', 'TEXT');
 addColumn('products', 'name_en', 'TEXT');
 addColumn('molds', 'producer', 'TEXT');
 addColumn('molds', 'agent', 'TEXT');
+for (const c of ['part_no', 'oem_no', 'material', 'steel', 'runner', 't0_date']) addColumn('upcoming_molds', c, 'TEXT');
 
 // الإعدادات الافتراضية: الجمعة راحة أسبوعية، وقسم الإجازات مقفول
 const defaults = { weekly_off: '5', leaves_enabled: '0' };
