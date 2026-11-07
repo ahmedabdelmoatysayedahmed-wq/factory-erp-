@@ -1,0 +1,14 @@
+<%- include('partials/header', { title: 'الإعدادات' }) %>
+<h1><%= t('الإعدادات') %></h1>
+<form method="post" class="card form narrow">
+  <fieldset class="days"><legend><%= t('أيام الراحة الأسبوعية') %></legend>
+    <% DAYS.forEach((d, i) => { %>
+      <label class="chk"><input type="checkbox" name="weekly_off" value="<%= i %>" <%= settings.weeklyOff.includes(i) ? 'checked' : '' %>> <%= t(d) %></label>
+    <% }) %>
+    <small><%= t('أيام الراحة مابتتحسبش غياب، وشاشة الحضور بتسجلها «راحة» تلقائياً.') %></small>
+  </fieldset>
+  <label class="chk"><input type="checkbox" name="leaves_enabled" value="1" <%= settings.leavesEnabled ? 'checked' : '' %>> <%= t('تفعيل قسم الإجازات') %></label>
+  <small class="muted"><%= t('لو المصنع بدأ يدي إجازات (اعتيادية، مرضية، ...) فعّل القسم ده.') %></small>
+  <div class="btns"><button class="btn primary"><%= t('حفظ') %></button></div>
+</form>
+<%- include('partials/footer') %>

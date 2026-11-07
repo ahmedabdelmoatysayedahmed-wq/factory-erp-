@@ -1,0 +1,55 @@
+<%- include('partials/header', { title: 'تقارير الإنتاجية' }) %>
+<% const n = (x) => Number(Number(x || 0).toFixed(1)).toLocaleString('en'); %>
+<div class="head"><h1><%= t('تقارير الإنتاجية') %></h1></div>
+<form class="filters card" method="get">
+  <label><%= t('من') %> <input type="date" name="from" value="<%= from %>"></label>
+  <label><%= t('إلى') %> <input type="date" name="to" value="<%= to %>"></label>
+  <button class="btn"><%= t('عرض') %></button>
+  <button type="button" class="btn" onclick="window.print()"><%= t('طباعة') %></button>
+</form>
+
+<section class="card">
+  <h2><%= t('إنتاجية الموظفين') %></h2>
+  <p class="muted"><%= t(['أيام العمل في الفترة: {0} (من غير أيام الراحة الأسبوعية)', workDays]) %></p>
+  <div class="table-wrap"><table>
+    <thead><tr><th><%= t('الموظف') %></th><th><%= t('أيام حضور') %></th><th><%= t('نسبة الحضور') %></th><th><%= t('غياب') %></th><th><%= t('تأخير') %></th><th><%= t('أيام إنتاج') %></th><th><%= t('الإنتاج') %></th><th><%= t('الهالك') %></th><th><%= t('نسبة الهالك') %></th><th><%= t('الساعات') %></th><th><%= t('قطعة/ساعة') %></th><th><%= t('متوسط يومي') %></th><th><%= t('تحقيق المستهدف') %></th></tr></thead>
+    <tbody>
+    <% for (const e of byEmployee) { const avg = e.days ? e.produced / e.days : 0; const ach = e.daily_target && e.days ? avg * 100 / e.daily_target : null; const sp = e.produced + e.scrap ? e.scrap * 100 / (e.produced + e.scrap) : 0; %>
+      <tr><td><%= e.code || '' %> <%= e.name %></td><td><%= e.att_days %></td><td class="<%= workDays && e.att_days / workDays < 0.9 ? 'warn' : '' %>"><%= workDays ? Math.round(e.att_days * 100 / workDays) + '%' : '—' %></td><td><%= e.abs_days %></td><td><%= e.late_days %></td><td><%= e.days %></td>
+      <td><b><%= n(e.produced) %></b></td><td><%= n(e.scrap) %></td><td class="<%= sp > 5 ? 'warn' : '' %>"><%= sp.toFixed(1) %>%</td><td><%= n(e.hours) %></td>
+      <td><%= e.hours ? n(e.produced / e.hours) : '—' %></td><td><%= n(avg) %></td>
+      <td><% if (ach === null) { %>—<% } else { %><div class="bar <%= ach < 80 ? 'low' : '' %>"><span style="width:<%= Math.min(100, ach) %>%"></span><em><%= ach.toFixed(0) %>%</em></div><% } %></td></tr>
+    <% } %>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="card">
+  <h2><%= t('إنتاجية الماكينات') %></h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th><%= t('الماكينة') %></th><th><%= t('ساعات التشغيل') %></th><th><%= t('دقائق التوقف') %></th><th><%= t('الإنتاج') %></th><th><%= t('الهالك') %></th><th><%= t('قطعة/ساعة') %></th><th><%= t('الطاقة') %></th><th><%= t('الكفاءة') %></th><th><%= t('الإتاحية') %></th></tr></thead>
+    <tbody>
+    <% for (const m of byMachine) { const eff = m.hourly_capacity && m.hours ? m.produced * 100 / (m.hourly_capacity * m.hours) : null; const avail = m.hours ? (m.hours * 60 - m.downtime) * 100 / (m.hours * 60) : null; %>
+      <tr><td><%= m.code || '' %> <%= m.name %></td><td><%= n(m.hours) %></td><td><%= n(m.downtime) %></td><td><b><%= n(m.produced) %></b></td><td><%= n(m.scrap) %></td>
+      <td><%= m.hours ? n(m.produced / m.hours) : '—' %></td><td><%= m.hourly_capacity ? n(m.hourly_capacity) : '—' %></td>
+      <td><% if (eff === null) { %>—<% } else { %><div class="bar <%= eff < 80 ? 'low' : '' %>"><span style="width:<%= Math.min(100, eff) %>%"></span><em><%= eff.toFixed(0) %>%</em></div><% } %></td>
+      <td><%= avail === null ? '—' : avail.toFixed(0) + '%' %></td></tr>
+    <% } %>
+    </tbody>
+  </table></div>
+  <p class="muted"><%= t('الكفاءة = الإنتاج ÷ (الطاقة × ساعات التشغيل). الإتاحية = وقت التشغيل الفعلي بعد خصم التوقفات') %>.</p>
+</section>
+
+<section class="card">
+  <h2><%= t('الإنتاج اليومي') %></h2>
+  <% const max = Math.max(1, ...daily.map(x => x.produced + x.scrap)); %>
+  <div class="chart">
+  <% for (const x of daily) { %>
+    <div class="row"><span class="d"><%= x.date.slice(5) %></span>
+      <div class="b"><i class="p" style="width:<%= x.produced * 100 / max %>%"></i><i class="s" style="width:<%= x.scrap * 100 / max %>%"></i></div>
+      <span class="v"><%= n(x.produced) %><% if (x.scrap) { %> <small>+<%= n(x.scrap) %> <%= t('هالك') %></small><% } %></span></div>
+  <% } %>
+  <% if (!daily.length) { %><p class="empty"><%= t('لا يوجد إنتاج مسجل في الفترة دي') %></p><% } %>
+  </div>
+</section>
+<%- include('partials/footer') %>
