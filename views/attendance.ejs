@@ -1,0 +1,40 @@
+<%- include('partials/header', { title: 'الحضور والانصراف' }) %>
+<div class="head">
+  <h1>الحضور والانصراف</h1>
+  <form method="get"><input type="date" name="date" value="<%= d %>" onchange="this.form.submit()"></form>
+</div>
+<% const editable = can('attendance', 'edit'); %>
+<form method="post" class="card">
+  <input type="hidden" name="date" value="<%= d %>">
+  <% if (editable) { %>
+  <div class="btns">
+    <button type="button" class="btn" onclick="markAll('present')">الكل حاضر</button>
+    <button class="btn primary">حفظ الحضور</button>
+  </div>
+  <% } %>
+  <div class="table-wrap">
+  <table class="att">
+    <thead><tr><th>الموظف</th><th>الحالة</th><th>حضور</th><th>انصراف</th><th>ملاحظات</th></tr></thead>
+    <tbody>
+    <% for (const e of rows) { const st = e.status || (e.leave_type ? 'leave' : ''); %>
+      <tr><td data-label="الموظف"><input type="hidden" name="emp" value="<%= e.id %>"><b><%= e.name %></b> <small><%= e.job_title || '' %></small>
+        <% if (e.leave_type) { %><span class="tag t-leave">إجازة معتمدة</span><% } %></td>
+      <td data-label="الحالة"><select name="status_<%= e.id %>" class="st" <%= editable ? '' : 'disabled' %>><option value="">—</option>
+        <% for (const [k, v] of Object.entries(STATUS.att)) { %><option value="<%= k %>" <%= st === k ? 'selected' : '' %>><%= v %></option><% } %></select></td>
+      <td data-label="حضور"><input type="time" name="in_<%= e.id %>" value="<%= e.check_in || '' %>" <%= editable ? '' : 'disabled' %>></td>
+      <td data-label="انصراف"><input type="time" name="out_<%= e.id %>" value="<%= e.check_out || '' %>" <%= editable ? '' : 'disabled' %>></td>
+      <td data-label="ملاحظات"><input name="notes_<%= e.id %>" value="<%= e.notes || '' %>" <%= editable ? '' : 'disabled' %>></td></tr>
+    <% } %>
+    <% if (!rows.length) { %><tr><td colspan="5" class="empty">أضف الموظفين أولاً من شاشة الموظفين</td></tr><% } %>
+    </tbody>
+  </table>
+  </div>
+</form>
+<script>
+function markAll(s) {
+  document.querySelectorAll('select.st').forEach(function (el) {
+    if (!el.value) { el.value = s; var tr = el.closest('tr'); var i = tr.querySelector('input[type=time]'); if (!i.value) i.value = '08:00'; }
+  });
+}
+</script>
+<%- include('partials/footer') %>

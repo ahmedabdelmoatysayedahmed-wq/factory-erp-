@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title><%= typeof title !== 'undefined' ? title + ' | ' : '' %>إدارة المصنع</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<% if (user) {
+  const groups = [
+    ['الرئيسية', [['/', 'لوحة التحكم', 'dashboard'], ['/reports', 'تقارير الإنتاجية', 'reports']]],
+    ['الإنتاج', [['/r/production_logs', 'الإنتاج اليومي', 'production_logs'], ['/r/production_orders', 'أوامر التشغيل', 'production_orders'], ['/r/products', 'المنتجات', 'products']]],
+    ['المعدات', [['/r/machines', 'الماكينات', 'machines'], ['/r/molds', 'الإسطمبات', 'molds'], ['/r/assets', 'الأصول', 'assets']]],
+    ['المخزن', [['/r/materials', 'المواد الخام', 'materials'], ['/r/stock_movements', 'حركات المخزن', 'stock_movements']]],
+    ['الموظفين', [['/r/employees', 'الموظفين', 'employees'], ['/attendance', 'الحضور والانصراف', 'attendance'], ['/r/leaves', 'الإجازات', 'leaves']]],
+    ['النظام', [['/users', 'المستخدمين والصلاحيات', 'users']]],
+  ];
+%>
+<header class="top">
+  <button class="menu-btn" onclick="document.body.classList.toggle('nav-open')" aria-label="القائمة">☰</button>
+  <a href="/" class="brand">🏭 إدارة المصنع</a>
+  <div class="who"><%= user.full_name || user.username %> <small>(<%= ROLES[user.role] %>)</small>
+    <a href="/password">كلمة المرور</a>
+    <form method="post" action="/logout" class="inline"><button class="link">خروج</button></form>
+  </div>
+</header>
+<div class="wrap">
+<nav class="side">
+  <% for (const [g, items] of groups) { const vis = items.filter(i => can(i[2])); if (!vis.length) continue; %>
+    <div class="grp"><%= g %></div>
+    <% for (const [href, label] of vis) { const act = href === '/' ? path === '/' : path.startsWith(href); %>
+      <a href="<%= href %>" class="<%= act ? 'active' : '' %>"><%= label %></a>
+    <% } %>
+  <% } %>
+</nav>
+<main>
+<% if (flash) { %><div class="flash <%= flash.type %>"><%= flash.msg %></div><% } %>
+<% } else { %><main class="center"><% } %>

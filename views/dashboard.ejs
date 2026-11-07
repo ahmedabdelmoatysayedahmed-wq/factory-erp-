@@ -1,0 +1,57 @@
+<%- include('partials/header', { title: 'لوحة التحكم' }) %>
+<% const n = (x) => Number(Number(x || 0).toFixed(1)).toLocaleString('en'); const lbl = (g, v) => (STATUS[g] || {})[v] || v; %>
+<div class="head">
+  <h1>لوحة التحكم</h1>
+  <form method="get"><input type="date" name="date" value="<%= d %>" onchange="this.form.submit()"></form>
+</div>
+<div class="kpis">
+  <div class="kpi"><b><%= stats.present %> / <%= stats.employees %></b><span>حاضر من الموظفين</span></div>
+  <div class="kpi"><b><%= stats.absent %></b><span>غائب</span></div>
+  <div class="kpi"><b><%= stats.onLeave %></b><span>في إجازة</span></div>
+  <div class="kpi good"><b><%= n(stats.produced) %></b><span>إنتاج اليوم (سليم)</span></div>
+  <div class="kpi bad"><b><%= n(stats.scrap) %></b><span>هالك<%= stats.produced + stats.scrap ? ' (' + (stats.scrap * 100 / (stats.produced + stats.scrap)).toFixed(1) + '%)' : '' %></span></div>
+  <div class="kpi"><b><%= n(stats.downtime) %></b><span>دقائق توقف</span></div>
+  <% if (stats.pendingLeaves) { %><a class="kpi warnk" href="/r/leaves?status=pending"><b><%= stats.pendingLeaves %></b><span>طلبات إجازة تنتظر</span></a><% } %>
+</div>
+
+<div class="cols">
+<section class="card">
+  <h2>الماكينات اليوم</h2>
+  <table><thead><tr><th>الماكينة</th><th>الحالة</th><th>الإنتاج</th><th>الساعات</th><th>الكفاءة</th></tr></thead><tbody>
+  <% for (const m of machines) { const eff = m.hourly_capacity && m.hours ? m.produced * 100 / (m.hourly_capacity * m.hours) : null; %>
+    <tr><td><%= m.code %> <%= m.name %></td><td><span class="tag t-<%= m.status %>"><%= lbl('machine', m.status) %></span></td>
+    <td><%= n(m.produced) %></td><td><%= n(m.hours) %></td><td><%= eff === null ? '—' : eff.toFixed(0) + '%' %></td></tr>
+  <% } %>
+  <% if (!machines.length) { %><tr><td colspan="5" class="empty">لم تُسجَّل ماكينات بعد</td></tr><% } %>
+  </tbody></table>
+</section>
+
+<section class="card">
+  <h2>أوامر التشغيل المفتوحة</h2>
+  <table><thead><tr><th>الأمر</th><th>المنتج</th><th>التسليم</th><th>الإنجاز</th></tr></thead><tbody>
+  <% for (const o of orders) { const p = o.qty_planned ? o.produced * 100 / o.qty_planned : 0; %>
+    <tr class="<%= o.due_date && o.due_date < d && p < 100 ? 'late' : '' %>"><td><%= o.code %></td><td><%= o.product %></td><td><%= o.due_date || '—' %></td>
+    <td><div class="bar"><span style="width:<%= Math.min(100, p) %>%"></span><em><%= n(o.produced) %> / <%= n(o.qty_planned) %></em></div></td></tr>
+  <% } %>
+  <% if (!orders.length) { %><tr><td colspan="4" class="empty">لا توجد أوامر مفتوحة</td></tr><% } %>
+  </tbody></table>
+</section>
+
+<section class="card">
+  <h2>⚠️ مواد خام وصلت لحد الطلب</h2>
+  <table><thead><tr><th>المادة</th><th>الرصيد</th><th>حد الطلب</th></tr></thead><tbody>
+  <% for (const m of lowStock) { %><tr><td><%= m.name %></td><td class="warn"><%= n(m.stock) %> <%= m.unit || '' %></td><td><%= n(m.min_stock) %></td></tr><% } %>
+  <% if (!lowStock.length) { %><tr><td colspan="3" class="empty">كل المواد فوق حد الطلب ✅</td></tr><% } %>
+  </tbody></table>
+</section>
+
+<section class="card">
+  <h2>🔧 إسطمبات تحتاج صيانة</h2>
+  <table><thead><tr><th>الإسطمبة</th><th>الحالة</th><th>ضربات منذ الصيانة</th></tr></thead><tbody>
+  <% for (const m of moldAlerts) { %><tr><td><%= m.code %> <%= m.name %></td><td><span class="tag t-<%= m.status %>"><%= lbl('mold', m.status) %></span></td>
+    <td class="warn"><%= Math.round(m.since).toLocaleString('en') %> / <%= m.maintenance_every.toLocaleString('en') %></td></tr><% } %>
+  <% if (!moldAlerts.length) { %><tr><td colspan="3" class="empty">لا توجد تنبيهات ✅</td></tr><% } %>
+  </tbody></table>
+</section>
+</div>
+<%- include('partials/footer') %>
