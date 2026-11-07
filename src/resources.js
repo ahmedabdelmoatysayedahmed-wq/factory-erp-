@@ -123,7 +123,7 @@ const resources = {
       if (row.type === 'out') {
         const r = db.prepare(`SELECT COALESCE(SUM(CASE WHEN type='out' THEN -qty ELSE qty END),0) s
           FROM stock_movements WHERE material_id=? AND id IS NOT ?`).get(row.material_id, id || null);
-        if (Number(row.qty) > r.s) return `الكمية المطلوب صرفها أكبر من الرصيد المتاح (${r.s})`;
+        if (Number(row.qty) > r.s) return ['الكمية المطلوب صرفها أكبر من الرصيد المتاح ({0})', r.s];
       }
       if (row.type !== 'adjust' && Number(row.qty) <= 0) return 'الكمية لازم تكون أكبر من صفر';
     },

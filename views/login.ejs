@@ -1,9 +1,9 @@
 <%- include('partials/header', { title: 'تسجيل الدخول' }) %>
 <form method="post" action="/login" class="card login">
-  <h1>🏭 إدارة المصنع</h1>
-  <% if (error) { %><div class="flash err"><%= error %></div><% } %>
-  <label>اسم المستخدم<input name="username" required autofocus autocomplete="username"></label>
-  <label>كلمة المرور<input name="password" type="password" required autocomplete="current-password"></label>
-  <button class="btn primary">دخول</button>
+  <h1>🏭 <%= t('إدارة المصنع') %></h1>
+  <% if (error) { %><div class="flash err"><%= t(error) %></div><% } %>
+  <label><%= t('اسم المستخدم') %><input name="username" required autofocus autocomplete="username"></label>
+  <label><%= t('كلمة المرور') %><input name="password" type="password" required autocomplete="current-password"></label>
+  <button class="btn primary"><%= t('دخول') %></button>
 </form>
 <%- include('partials/footer') %>

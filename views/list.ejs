@@ -1,34 +1,34 @@
 <%- include('partials/header', { title: r.title }) %>
 <div class="head">
-  <h1><%= r.title %> <small>(<%= rows.length %>)</small></h1>
-  <% if (can(rk, 'edit')) { %><a class="btn primary" href="/r/<%= rk %>/new">+ إضافة <%= r.single %></a><% } %>
+  <h1><%= t(r.title) %> <small>(<%= rows.length %>)</small></h1>
+  <% if (can(rk, 'edit')) { %><a class="btn primary" href="/r/<%= rk %>/new">+ <%= t('إضافة') %> <%= t(r.single) %></a><% } %>
 </div>
 <form class="filters card" method="get">
-  <input name="q" value="<%= q %>" placeholder="بحث...">
+  <input name="q" value="<%= q %>" placeholder="<%= t('بحث...') %>">
   <% if (dateField) { %>
-    <label>من <input type="date" name="from" value="<%= query.from || '' %>"></label>
-    <label>إلى <input type="date" name="to" value="<%= query.to || '' %>"></label>
+    <label><%= t('من') %> <input type="date" name="from" value="<%= query.from || '' %>"></label>
+    <label><%= t('إلى') %> <input type="date" name="to" value="<%= query.to || '' %>"></label>
   <% } %>
   <% for (const f of filters) { %>
-    <select name="<%= f.name %>"><option value=""><%= f.label %>: الكل</option>
-      <% for (const c of f.choices) { %><option value="<%= c.value %>" <%= String(query[f.name]) === String(c.value) ? 'selected' : '' %>><%= c.label %></option><% } %>
+    <select name="<%= f.name %>"><option value=""><%= t(f.label) %>: <%= t('الكل') %></option>
+      <% for (const c of f.choices) { %><option value="<%= c.value %>" <%= String(query[f.name]) === String(c.value) ? 'selected' : '' %>><%= f.type === 'select' ? t(c.label) : c.label %></option><% } %>
     </select>
   <% } %>
-  <button class="btn">تصفية</button> <a href="/r/<%= rk %>">مسح</a>
+  <button class="btn"><%= t('تصفية') %></button> <a href="/r/<%= rk %>"><%= t('مسح') %></a>
 </form>
 <% const cols = [...r.fields.filter(f => f.list), ...(r.computed || [])]; %>
 <div class="table-wrap card">
 <table>
-  <thead><tr><% for (const f of cols) { %><th><%= f.label %></th><% } %><% if (can(rk, 'edit')) { %><th></th><% } %></tr></thead>
+  <thead><tr><% for (const f of cols) { %><th><%= t(f.label) %></th><% } %><% if (can(rk, 'edit')) { %><th></th><% } %></tr></thead>
   <tbody>
-  <% if (!rows.length) { %><tr><td colspan="<%= cols.length + 1 %>" class="empty">لا توجد بيانات</td></tr><% } %>
+  <% if (!rows.length) { %><tr><td colspan="<%= cols.length + 1 %>" class="empty"><%= t('لا توجد بيانات') %></td></tr><% } %>
   <% for (const row of rows) { %>
     <tr>
-      <% for (const f of cols) { %><td class="<%= f.warn && f.warn(row) ? 'warn' : '' %>" data-label="<%= f.label %>"><%- include('partials/cell', { f, row, refs }) %></td><% } %>
+      <% for (const f of cols) { %><td class="<%= f.warn && f.warn(row) ? 'warn' : '' %>" data-label="<%= t(f.label) %>"><%- include('partials/cell', { f, row, refs }) %></td><% } %>
       <% if (can(rk, 'edit')) { %>
       <td class="actions">
-        <a href="/r/<%= rk %>/<%= row.id %>/edit">تعديل</a>
-        <form method="post" action="/r/<%= rk %>/<%= row.id %>/delete" class="inline" onsubmit="return confirm('متأكد من الحذف؟')"><button class="link danger">حذف</button></form>
+        <a href="/r/<%= rk %>/<%= row.id %>/edit"><%= t('تعديل') %></a>
+        <form method="post" action="/r/<%= rk %>/<%= row.id %>/delete" class="inline" onsubmit="return confirm('<%= t('متأكد من الحذف؟') %>')"><button class="link danger"><%= t('حذف') %></button></form>
       </td><% } %>
     </tr>
   <% } %>

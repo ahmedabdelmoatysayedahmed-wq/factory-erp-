@@ -1,30 +1,30 @@
 <%- include('partials/header', { title: 'المستخدمين' }) %>
-<div class="head"><h1>المستخدمين والصلاحيات</h1></div>
+<div class="head"><h1><%= t('المستخدمين والصلاحيات') %></h1></div>
 <div class="cols">
 <form method="post" action="/users" class="card form">
-  <h2><%= edit ? 'تعديل مستخدم' : 'إضافة مستخدم' %></h2>
+  <h2><%= t(edit ? 'تعديل مستخدم' : 'إضافة مستخدم') %></h2>
   <% if (edit) { %><input type="hidden" name="id" value="<%= edit.id %>"><% } %>
-  <label>اسم الدخول<input name="username" required value="<%= edit ? edit.username : '' %>"></label>
-  <label>الاسم الكامل<input name="full_name" value="<%= edit ? edit.full_name : '' %>"></label>
-  <label>الدور<select name="role"><% for (const [k, v] of Object.entries(ROLES)) { %><option value="<%= k %>" <%= edit && edit.role === k ? 'selected' : '' %>><%= v %></option><% } %></select></label>
-  <label>كلمة المرور <%= edit ? '(اتركها فاضية لو مش هتغيرها)' : '' %><input name="password" type="password" <%= edit ? '' : 'required' %> minlength="6"></label>
-  <label class="chk"><input type="checkbox" name="active" value="1" <%= !edit || edit.active ? 'checked' : '' %>> الحساب مفعّل</label>
-  <div class="btns"><button class="btn primary">حفظ</button><% if (edit) { %><a class="btn" href="/users">إلغاء</a><% } %></div>
+  <label><%= t('اسم الدخول') %><input name="username" required value="<%= edit ? edit.username : '' %>"></label>
+  <label><%= t('الاسم الكامل') %><input name="full_name" value="<%= edit ? edit.full_name : '' %>"></label>
+  <label><%= t('الدور') %><select name="role"><% for (const [k, v] of Object.entries(ROLES)) { %><option value="<%= k %>" <%= edit && edit.role === k ? 'selected' : '' %>><%= t(v) %></option><% } %></select></label>
+  <label><%= t('كلمة المرور') %> <%= edit ? t('(اتركها فاضية لو مش هتغيرها)') : '' %><input name="password" type="password" <%= edit ? '' : 'required' %> minlength="6"></label>
+  <label class="chk"><input type="checkbox" name="active" value="1" <%= !edit || edit.active ? 'checked' : '' %>> <%= t('الحساب مفعّل') %></label>
+  <div class="btns"><button class="btn primary"><%= t('حفظ') %></button><% if (edit) { %><a class="btn" href="/users"><%= t('إلغاء') %></a><% } %></div>
 </form>
 <section class="card">
-  <table><thead><tr><th>اسم الدخول</th><th>الاسم</th><th>الدور</th><th>الحالة</th><th></th></tr></thead><tbody>
-  <% for (const u of users) { %><tr><td><%= u.username %></td><td><%= u.full_name %></td><td><%= ROLES[u.role] %></td>
-    <td><%= u.active ? 'مفعّل' : 'موقوف' %></td><td><a href="/users/<%= u.id %>/edit">تعديل</a></td></tr><% } %>
+  <table><thead><tr><th><%= t('اسم الدخول') %></th><th><%= t('الاسم') %></th><th><%= t('الدور') %></th><th><%= t('الحالة') %></th><th></th></tr></thead><tbody>
+  <% for (const u of users) { %><tr><td><%= u.username %></td><td><%= u.full_name %></td><td><%= t(ROLES[u.role]) %></td>
+    <td><%= t(u.active ? 'مفعّل' : 'موقوف') %></td><td><a href="/users/<%= u.id %>/edit"><%= t('تعديل') %></a></td></tr><% } %>
   </tbody></table>
 </section>
 </div>
 <section class="card">
-  <h2>جدول الصلاحيات</h2>
-  <div class="table-wrap"><table class="perm"><thead><tr><th>القسم</th><% for (const v of Object.values(ROLES)) { %><th><%= v %></th><% } %></tr></thead><tbody>
+  <h2><%= t('جدول الصلاحيات') %></h2>
+  <div class="table-wrap"><table class="perm"><thead><tr><th><%= t('القسم') %></th><% for (const v of Object.values(ROLES)) { %><th><%= t(v) %></th><% } %></tr></thead><tbody>
   <% const P = PERMS; const names = { dashboard: 'لوحة التحكم', reports: 'التقارير', attendance: 'الحضور والانصراف', users: 'المستخدمين' };
      for (const [s, p] of Object.entries(P)) { %>
-    <tr><td><%= names[s] || (resources[s] && resources[s].title) || s %></td>
-    <% for (const k of Object.keys(ROLES)) { %><td><%= p.edit.includes(k) ? '✏️ تعديل' : p.view.includes(k) ? '👁 عرض' : '—' %></td><% } %></tr>
+    <tr><td><%= t(names[s] || (resources[s] && resources[s].title) || s) %></td>
+    <% for (const k of Object.keys(ROLES)) { %><td><%= p.edit.includes(k) ? t('✏️ تعديل') : p.view.includes(k) ? t('👁 عرض') : '—' %></td><% } %></tr>
   <% } %>
   </tbody></table></div>
 </section>

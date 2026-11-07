@@ -1,11 +1,12 @@
 <!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="<%= lang %>" dir="<%= dir %>">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title><%= typeof title !== 'undefined' ? title + ' | ' : '' %>إدارة المصنع</title>
+<title><%= typeof title !== 'undefined' ? t(title) + ' | ' : '' %><%= t('إدارة المصنع') %></title>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+<% const langLink = lang === 'ar' ? ['/lang/en', 'English'] : ['/lang/ar', 'عربي']; %>
 <% if (user) {
   const groups = [
     ['الرئيسية', [['/', 'لوحة التحكم', 'dashboard'], ['/reports', 'تقارير الإنتاجية', 'reports']]],
@@ -17,22 +18,24 @@
   ];
 %>
 <header class="top">
-  <button class="menu-btn" onclick="document.body.classList.toggle('nav-open')" aria-label="القائمة">☰</button>
-  <a href="/" class="brand">🏭 إدارة المصنع</a>
-  <div class="who"><%= user.full_name || user.username %> <small>(<%= ROLES[user.role] %>)</small>
-    <a href="/password">كلمة المرور</a>
-    <form method="post" action="/logout" class="inline"><button class="link">خروج</button></form>
+  <button class="menu-btn" onclick="document.body.classList.toggle('nav-open')" aria-label="<%= t('القائمة') %>">☰</button>
+  <a href="/" class="brand">🏭 <%= t('إدارة المصنع') %></a>
+  <div class="who">
+    <a href="<%= langLink[0] %>" class="lang-btn"><%= langLink[1] %></a>
+    <span><%= user.full_name || user.username %> <small>(<%= t(ROLES[user.role]) %>)</small></span>
+    <a href="/password" class="hide-sm"><%= t('كلمة المرور') %></a>
+    <form method="post" action="/logout" class="inline"><button class="link"><%= t('خروج') %></button></form>
   </div>
 </header>
 <div class="wrap">
 <nav class="side">
   <% for (const [g, items] of groups) { const vis = items.filter(i => can(i[2])); if (!vis.length) continue; %>
-    <div class="grp"><%= g %></div>
+    <div class="grp"><%= t(g) %></div>
     <% for (const [href, label] of vis) { const act = href === '/' ? path === '/' : path.startsWith(href); %>
-      <a href="<%= href %>" class="<%= act ? 'active' : '' %>"><%= label %></a>
+      <a href="<%= href %>" class="<%= act ? 'active' : '' %>"><%= t(label) %></a>
     <% } %>
   <% } %>
 </nav>
 <main>
-<% if (flash) { %><div class="flash <%= flash.type %>"><%= flash.msg %></div><% } %>
-<% } else { %><main class="center"><% } %>
+<% if (flash) { %><div class="flash <%= flash.type %>"><%= t(flash.msg) %></div><% } %>
+<% } else { %><main class="center"><a href="<%= langLink[0] %>" class="lang-float"><%= langLink[1] %></a><% } %>

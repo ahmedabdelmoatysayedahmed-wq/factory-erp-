@@ -5,6 +5,7 @@ const path = require('path');
 const db = require('./db');
 const { ROLES, PERMS, can } = require('./roles');
 const { resources, STATUS, today } = require('./resources');
+const { LANGS, translator } = require('./i18n');
 
 const app = express();
 app.set('view engine', 'ejs');
@@ -19,6 +20,11 @@ app.use(session({
 
 // متغيرات متاحة لكل الشاشات
 app.use((req, res, next) => {
+  const m = /(?:^|;\s*)lang=(\w+)/.exec(req.headers.cookie || '');
+  const lang = m && LANGS.includes(m[1]) ? m[1] : 'ar';
+  res.locals.lang = lang;
+  res.locals.dir = lang === 'ar' ? 'rtl' : 'ltr';
+  res.locals.t = translator(lang);
   res.locals.user = req.session.user || null;
   res.locals.can = (s, a) => can(req.session.user, s, a);
   res.locals.ROLES = ROLES;
@@ -29,6 +35,13 @@ app.use((req, res, next) => {
   next();
 });
 const flash = (req, type, msg) => { req.session.flash = { type, msg }; };
+
+// ---------- تغيير اللغة ----------
+app.get('/lang/:l', (req, res) => {
+  if (LANGS.includes(req.params.l)) res.cookie('lang', req.params.l, { maxAge: 365 * 864e5, sameSite: 'lax' });
+  const back = req.get('referer');
+  res.redirect(back && new URL(back).host === req.get('host') ? back : '/');
+});
 
 // ---------- الدخول ----------
 app.get('/login', (req, res) => res.render('login', { error: null }));
@@ -217,7 +230,7 @@ app.post(['/r/:res', '/r/:res/:id'], getRes, needRes('edit'), (req, res) => {
     row[f.name] = v;
   }
   const missing = r.fields.find((f) => f.required && (row[f.name] === null || Number.isNaN(row[f.name])));
-  let error = missing ? `حقل "${missing.label}" مطلوب` : r.validate && r.validate(row, db, id);
+  let error = missing ? ['حقل "{0}" مطلوب', missing.label] : r.validate && r.validate(row, db, id);
   if (!error) {
     r.beforeSave && r.beforeSave(row, db);
     const cols = Object.keys(row);
@@ -231,7 +244,7 @@ app.post(['/r/:res', '/r/:res/:id'], getRes, needRes('edit'), (req, res) => {
       flash(req, 'ok', 'تم الحفظ بنجاح');
       return res.redirect(req.body.again ? `/r/${req.rk}/new` : `/r/${req.rk}`);
     } catch (e) {
-      error = e.message.includes('UNIQUE') ? 'الكود ده مستخدم قبل كده' : 'خطأ في الحفظ: ' + e.message;
+      error = e.message.includes('UNIQUE') ? 'الكود ده مستخدم قبل كده' : ['خطأ في الحفظ: {0}', e.message];
     }
   }
   showForm(req, res, { ...row, id }, error);

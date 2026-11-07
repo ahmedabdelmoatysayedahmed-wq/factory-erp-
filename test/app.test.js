@@ -8,14 +8,14 @@ const app = require('../src/app');
 let server, base;
 
 function client() {
-  let cookie = '';
+  const jar = {};
   return async (method, url, form) => {
     const res = await fetch(base + url, {
       method, redirect: 'manual',
-      headers: { cookie, ...(form ? { 'content-type': 'application/x-www-form-urlencoded' } : {}) },
+      headers: { cookie: Object.entries(jar).map(([k, v]) => k + '=' + v).join('; '), ...(form ? { 'content-type': 'application/x-www-form-urlencoded' } : {}) },
       body: form ? new URLSearchParams(form).toString() : undefined,
     });
-    const sc = res.headers.get('set-cookie'); if (sc) cookie = sc.split(';')[0];
+    for (const c of res.headers.getSetCookie()) { const [k, v] = c.split(';')[0].split('='); jar[k] = v; }
     return { status: res.status, location: res.headers.get('location'), text: await res.text() };
   };
 }
@@ -57,6 +57,21 @@ test('full workflow', async () => {
   assert.match(dash.text, /بلاستيك/); assert.match(dash.text, /إسطمبة غطاء/);
   for (const p of ['/r/employees', '/r/assets', '/attendance?date=2026-11-01', '/users', '/r/employees/new', '/r/molds/1/edit'])
     assert.equal((await req('GET', p)).status, 200, p);
+
+  // اللغة الإنجليزية
+  const en = client();
+  await en('GET', '/lang/en');
+  const login = await en('GET', '/login');
+  assert.match(login.text, /dir="ltr"/); assert.match(login.text, /Sign in/);
+  await en('POST', '/login', { username: 'admin', password: 'admin123' });
+  for (const p of ['/', '/reports', '/attendance', '/users', '/r/molds', '/r/production_logs/new', '/r/stock_movements']) {
+    const html = (await en('GET', p)).text;
+    // مفيش نص عربي غير البيانات المدخلة وزرار "عربي"
+    const ar = html.replace(/أحمد|غطاء|إسطمبة غطاء|بلاستيك|كجم|مدير النظام|مكبس|أمين|عربي/g, '').match(/[\u0600-\u06FF]+/g);
+    assert.equal(ar, null, p + ': ' + (ar || []).join(' '));
+  }
+  const bad = await en('POST', '/r/stock_movements', { date: '2026-11-01', material_id: '1', type: 'out', qty: '999' });
+  assert.match(bad.text, /exceeds available stock \(40\)/);
 
   // صلاحيات: أمين مخزن مايقدرش يدخل الإنتاج أو الموظفين
   await req('POST', '/users', { username: 'store', full_name: 'أمين', role: 'storekeeper', password: 'store123', active: '1' });

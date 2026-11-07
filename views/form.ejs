@@ -1,29 +1,29 @@
 <%- include('partials/header', { title: r.single }) %>
-<h1><%= row.id ? 'تعديل' : 'إضافة' %> <%= r.single %></h1>
+<h1><%= t(row.id ? 'تعديل' : 'إضافة') %> <%= t(r.single) %></h1>
 <form method="post" action="/r/<%= rk %><%= row.id ? '/' + row.id : '' %>" class="card form">
-  <% if (error) { %><div class="flash err"><%= error %></div><% } %>
+  <% if (error) { %><div class="flash err"><%= t(error) %></div><% } %>
   <div class="grid">
   <% for (const f of r.fields) { const v = row[f.name] ?? ''; %>
-    <label class="<%= f.type === 'textarea' ? 'full' : '' %>"><span><%= f.label %><%= f.required ? ' *' : '' %></span>
+    <label class="<%= f.type === 'textarea' ? 'full' : '' %>"><span><%= t(f.label) %><%= f.required ? ' *' : '' %></span>
     <% if (f.type === 'select') { %>
       <select name="<%= f.name %>" <%= f.required ? 'required' : '' %>><% if (!f.required) { %><option value="">—</option><% } %>
-        <% for (const o of f.options) { %><option value="<%= o.value %>" <%= String(v) === o.value ? 'selected' : '' %>><%= o.label %></option><% } %></select>
+        <% for (const o of f.options) { %><option value="<%= o.value %>" <%= String(v) === o.value ? 'selected' : '' %>><%= t(o.label) %></option><% } %></select>
     <% } else if (f.type === 'ref') { %>
-      <select name="<%= f.name %>" <%= f.required ? 'required' : '' %>><option value="">— اختر —</option>
+      <select name="<%= f.name %>" <%= f.required ? 'required' : '' %>><option value=""><%= t('— اختر —') %></option>
         <% for (const o of refs[f.name]) { %><option value="<%= o.id %>" <%= String(v) === String(o.id) ? 'selected' : '' %>><%= o.label %></option><% } %></select>
     <% } else if (f.type === 'textarea') { %>
       <textarea name="<%= f.name %>" rows="3"><%= v %></textarea>
     <% } else { %>
       <input name="<%= f.name %>" type="<%= f.type || 'text' %>" <%= f.type === 'number' ? 'step=any inputmode=decimal' : '' %> value="<%= v %>" <%= f.required ? 'required' : '' %>>
     <% } %>
-    <% if (f.hint) { %><small><%= f.hint %></small><% } %>
+    <% if (f.hint) { %><small><%= t(f.hint) %></small><% } %>
     </label>
   <% } %>
   </div>
   <div class="btns">
-    <button class="btn primary">حفظ</button>
-    <% if (!row.id) { %><button class="btn" name="again" value="1">حفظ وإضافة جديد</button><% } %>
-    <a href="/r/<%= rk %>" class="btn">إلغاء</a>
+    <button class="btn primary"><%= t('حفظ') %></button>
+    <% if (!row.id) { %><button class="btn" name="again" value="1"><%= t('حفظ وإضافة جديد') %></button><% } %>
+    <a href="/r/<%= rk %>" class="btn"><%= t('إلغاء') %></a>
   </div>
 </form>
 <%- include('partials/footer') %>
