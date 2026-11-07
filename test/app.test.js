@@ -115,12 +115,30 @@ test('full workflow', async () => {
   assert.doesNotMatch((await req('GET', '/r/production_logs')).text, /مكبس حقن 1/);
   assert.match((await req('GET', '/r/employees')).text, /موظف تجريبي أول/);
 
+  // استيراد الإسطمبات من Excel: كل إسطمبة بيتعملها منتج بنفس رقم القطعة
+  const mx = fs.readFileSync(path.join(__dirname, 'fixtures', 'molds-sample.xlsx'));
+  const mimp = async (q = '') => JSON.parse((await req('POST', '/r/molds/import' + q, null, mx)).text);
+  const mpv = await mimp('?preview=1');
+  assert.equal(mpv.rows.length, 2);
+  assert.equal(mpv.rows[1].code, 'TEST002 RA'); // المسافات الزيادة اتشالت
+  assert.equal(mpv.rows[0].name_en, 'F.BUMPER BRACKET TEST 2020 RA');
+  assert.deepEqual(await mimp(), { ok: true, added: 2, updated: 0 });
+  assert.deepEqual(await mimp(), { ok: true, added: 0, updated: 2 });
+  assert.match((await req('GET', '/r/molds')).text, /مثبت اكصدام تجريبي/);
+  assert.match((await req('GET', '/r/products')).text, /TEST001 RA/);
+  assert.equal((await req('GET', '/r/machines/import')).status, 404); // الاستيراد للموظفين والإسطمبات بس
+
   // قائمة موظفين المصنع في البيانات التجريبية
   await req('POST', '/settings/demo', { reset_employees: '1' });
   const roster = (await req('GET', '/r/employees')).text;
   assert.match(roster, /يوسف احمد عبدالمعطى/);
   assert.doesNotMatch(roster, /موظف تجريبي أول/);
   assert.match((await req('GET', '/r/production_logs')).text, /عبد النبى ابو حسيبه/);
+  assert.match((await req('GET', '/r/molds')).text, /\(101\)/); // إسطمبات المصنع كلها
+  assert.match((await req('GET', '/r/molds')).text, /ANMBBS027 RA/);
+  // تسجيل إنتاج بالإسطمبة بس => المنتج بيتملى لوحده
+  await req('POST', '/r/production_logs', { date: '2025-01-15', employee_id: '1', machine_id: '1', mold_id: '1', qty_produced: '10' });
+  assert.match((await req('GET', '/r/production_logs?mold_id=1&from=2025-01-15&to=2025-01-15')).text, /data-label="المنتج">(?!—)[^<]+</);
 
   // صلاحيات: أمين مخزن مايقدرش يدخل الإنتاج أو الموظفين
   await req('POST', '/users', { username: 'store', full_name: 'أمين', role: 'storekeeper', password: 'store123', active: '1' });

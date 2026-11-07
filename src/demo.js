@@ -1,5 +1,8 @@
 // بيانات تجريبية للعرض والتدريب
 const ROSTER = require('./demo-employees');
+const MOLDS = require('./demo-molds');
+// أسامي الإسطمبات الوهمية اللي كانت في النسخ القديمة
+const OLD_FAKE_MOLDS = ['إسطمبة غطاء 38', 'إسطمبة جركن 5L', 'إسطمبة برطمان', 'إسطمبة غطاء 28 (احتياطي)'];
 // أسامي الموظفين الوهميين اللي كانت في النسخ القديمة من البيانات التجريبية
 const OLD_FAKE = ['محمد علي', 'أحمد حسن', 'محمود سيد', 'كريم سمير', 'مصطفى عادل', 'عمرو خالد', 'إسلام فتحي', 'هاني رمضان', 'سامح نبيل', 'ياسر جمال'];
 const TABLES = ['production_logs', 'stock_movements', 'attendance', 'leaves', 'production_orders', 'molds', 'assets', 'materials', 'products', 'machines'];
@@ -34,9 +37,18 @@ function seedDemo(db, { keepEmployees = false, resetEmployees = false } = {}) {
     for (const e of operators) if (!e.daily_target) db.prepare('UPDATE employees SET daily_target=? WHERE id=?').run(600, e.id);
 
     const mach = [1, 2, 3, 4, 5].map((i) => ins('machines', { code: 'M' + i, name: 'مكبس حقن ' + i, type: i <= 3 ? 'حقن 250 طن' : 'حقن 400 طن', location: 'صالة ' + (i <= 3 ? 'أ' : 'ب'), hourly_capacity: i <= 3 ? 90 : 60, status: i === 5 ? 'maintenance' : 'running' }));
-    const prod = [['غطاء 38مم', 'قطعة'], ['جركن 5 لتر', 'قطعة'], ['برطمان 1 كجم', 'قطعة']].map(([name, unit], i) => ins('products', { code: 'P' + (i + 1), name, unit }));
-    const molds = [['إسطمبة غطاء 38', 0, 8, 20000], ['إسطمبة جركن 5L', 1, 1, 15000], ['إسطمبة برطمان', 2, 2, 12000], ['إسطمبة غطاء 28 (احتياطي)', 0, 12, 20000]]
-      .map(([name, p, cav, every], i) => ins('molds', { code: 'S' + (i + 1), name, product_id: prod[p], cavities: cav, maintenance_every: every, status: i === 3 ? 'available' : 'in_use', location: 'رف ' + (i + 1), initial_shots: i === 2 ? 10000 : 0, last_maintenance: day(30) }));
+    // إسطمبات المصنع (src/demo-molds.js) - كل إسطمبة ليها منتج بنفس رقم القطعة
+    // 3 منهم شغالين في البيانات التجريبية
+    const USED = [0, 3, 6];
+    const allProducts = MOLDS.map((m) => ins('products', { code: m.code, name: m.name, name_en: m.name_en, unit: 'قطعة' }));
+    const allMolds = MOLDS.map((m, i) => {
+      const u = USED.indexOf(i);
+      return ins('molds', { code: m.code, name: m.name, name_en: m.name_en, product_id: allProducts[i], cavities: 1,
+        status: u >= 0 ? 'in_use' : 'available',
+        ...(u >= 0 ? { maintenance_every: 15000, initial_shots: u === 2 ? 11000 : 0, last_maintenance: day(30) } : {}) });
+    });
+    const prod = USED.map((i) => allProducts[i]);
+    const molds = USED.map((i) => allMolds[i]);
     const mats = [['بولي إيثيلين HDPE', 'كجم', 1000, 52], ['بولي بروبلين PP', 'كجم', 800, 48], ['ماستر باتش أزرق', 'كجم', 30, 180], ['ماستر باتش أبيض', 'كجم', 30, 150], ['كراتين تعبئة', 'كرتونة', 200, 9]]
       .map(([name, unit, min, cost], i) => ins('materials', { code: 'R' + (i + 1), name, unit, min_stock: min, unit_cost: cost, supplier: i < 2 ? 'مورد خامات' : 'مورد محلي' }));
     [[0, 5000], [1, 3000], [2, 60], [3, 100], [4, 1500]].forEach(([m, q]) => ins('stock_movements', { date: day(14), material_id: mats[m], type: 'in', qty: q, reference: 'رصيد افتتاحي' }));
@@ -69,10 +81,16 @@ function seedDemo(db, { keepEmployees = false, resetEmployees = false } = {}) {
   return count;
 }
 
+// هل الإسطمبات الموجودة هي بس الإسطمبات الوهمية القديمة؟
+function hasOnlyOldFakeMolds(db) {
+  const names = db.prepare('SELECT name FROM molds').all().map((r) => r.name);
+  return names.length > 0 && names.every((n) => OLD_FAKE_MOLDS.includes(n));
+}
+
 // هل الموظفين الموجودين هما بس الموظفين الوهميين القدام؟
 function hasOnlyOldFakeEmployees(db) {
   const names = db.prepare('SELECT name FROM employees').all().map((r) => r.name);
   return names.length > 0 && names.every((n) => OLD_FAKE.includes(n));
 }
 
-module.exports = { seedDemo, clearData, hasOnlyOldFakeEmployees, ROSTER };
+module.exports = { seedDemo, clearData, hasOnlyOldFakeEmployees, hasOnlyOldFakeMolds, ROSTER, MOLDS };

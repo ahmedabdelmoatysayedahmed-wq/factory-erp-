@@ -77,6 +77,8 @@ const addColumn = (table, col, type) => {
 };
 addColumn('employees', 'national_id', 'TEXT');
 addColumn('employees', 'salary', 'REAL');
+addColumn('molds', 'name_en', 'TEXT');
+addColumn('products', 'name_en', 'TEXT');
 
 // الإعدادات الافتراضية: الجمعة راحة أسبوعية، وقسم الإجازات مقفول
 const defaults = { weekly_off: '5', leaves_enabled: '0' };

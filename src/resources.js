@@ -49,8 +49,9 @@ const resources = {
   products: {
     title: 'المنتجات', single: 'منتج', order: 'name',
     fields: [
-      { name: 'code', label: 'الكود', list: true },
+      { name: 'code', label: 'رقم القطعة', list: true },
       { name: 'name', label: 'الاسم', required: true, list: true },
+      { name: 'name_en', label: 'الوصف بالإنجليزي', list: true },
       { name: 'unit', label: 'الوحدة', list: true },
       { name: 'notes', label: 'ملاحظات', type: 'textarea', list: true },
     ],
@@ -64,9 +65,10 @@ const resources = {
               FROM production_logs l WHERE l.mold_id = t.id AND (t.last_maintenance IS NULL OR l.date > t.last_maintenance)),0)
               AS shots_since_maint`,
     fields: [
-      { name: 'code', label: 'الكود', list: true },
+      { name: 'code', label: 'رقم القطعة', list: true },
       { name: 'name', label: 'الاسم', required: true, list: true },
-      { name: 'product_id', label: 'المنتج', type: 'ref', ref: 'products', list: true },
+      { name: 'name_en', label: 'الوصف بالإنجليزي' },
+      { name: 'product_id', label: 'المنتج', type: 'ref', ref: 'products' },
       { name: 'cavities', label: 'عدد العيون', type: 'number', list: true },
       { name: 'status', label: 'الحالة', type: 'select', options: opt(STATUS.mold), list: true },
       { name: 'location', label: 'مكان التخزين', list: true },
@@ -170,6 +172,11 @@ const resources = {
       if (row.order_id && !row.product_id) {
         const o = db.prepare('SELECT product_id FROM production_orders WHERE id=?').get(row.order_id);
         if (o) row.product_id = o.product_id;
+      }
+      // ولو اختار إسطمبة، ناخد المنتج بتاعها
+      if (row.mold_id && !row.product_id) {
+        const m = db.prepare('SELECT product_id FROM molds WHERE id=?').get(row.mold_id);
+        if (m) row.product_id = m.product_id;
       }
     },
   },

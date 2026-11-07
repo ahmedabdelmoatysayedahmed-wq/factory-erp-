@@ -31,7 +31,7 @@
   <h2><%= t('أوامر التشغيل المفتوحة') %></h2>
   <table><thead><tr><th><%= t('الأمر') %></th><th><%= t('المنتج') %></th><th><%= t('التسليم') %></th><th><%= t('الإنجاز') %></th></tr></thead><tbody>
   <% for (const o of orders) { const p = o.qty_planned ? o.produced * 100 / o.qty_planned : 0; %>
-    <tr class="<%= o.due_date && o.due_date < d && p < 100 ? 'late' : '' %>"><td><%= o.code %></td><td><%= o.product %></td><td><%= o.due_date || '—' %></td>
+    <tr class="<%= o.due_date && o.due_date < d && p < 100 ? 'late' : '' %>"><td class="nw"><%= o.code %></td><td><%= o.product %></td><td class="nw"><%= o.due_date || '—' %></td>
     <td><div class="bar"><span style="width:<%= Math.min(100, p) %>%"></span><em><%= n(o.produced) %> <%= t('من أصل') %> <%= n(o.qty_planned) %></em></div></td></tr>
   <% } %>
   <% if (!orders.length) { %><tr><td colspan="4" class="empty"><%= t('لا توجد أوامر مفتوحة') %></td></tr><% } %>
@@ -50,7 +50,7 @@
   <h2>🔧 <%= t('إسطمبات تحتاج صيانة') %></h2>
   <table><thead><tr><th><%= t('الإسطمبة') %></th><th><%= t('الحالة') %></th><th><%= t('ضربات منذ الصيانة') %></th></tr></thead><tbody>
   <% for (const m of moldAlerts) { %><tr><td><%= m.code %> <%= m.name %></td><td><span class="tag t-<%= m.status %>"><%= lbl('mold', m.status) %></span></td>
-    <td class="warn"><%= Math.round(m.since).toLocaleString('en') %> / <%= m.maintenance_every.toLocaleString('en') %></td></tr><% } %>
+    <td class="warn"><%= Math.round(m.since).toLocaleString('en') %> <%= t('من أصل') %> <%= m.maintenance_every.toLocaleString('en') %></td></tr><% } %>
   <% if (!moldAlerts.length) { %><tr><td colspan="3" class="empty"><%= t('لا توجد تنبيهات') %> ✅</td></tr><% } %>
   </tbody></table>
 </section>

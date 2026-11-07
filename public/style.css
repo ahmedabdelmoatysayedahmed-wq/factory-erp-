@@ -63,7 +63,7 @@ tr.late td{background:#fff4f2}
 .kpi b{font-size:24px}.kpi b small{font-size:14px;color:var(--muted);font-weight:400}.kpi span{color:var(--muted);font-size:13px}
 .kpi.good b{color:var(--ok)}.kpi.bad b{color:var(--bad)}.kpi.warnk{border-color:#f1c27d;background:#fffaf0}
 .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px}
-.cols>.card{margin-bottom:0}.cols{margin-bottom:16px}
+.cols>.card{margin-bottom:0;min-width:0;overflow-x:auto}.cols td{white-space:normal}.cols td.nw,.tag{white-space:nowrap}.cols td .bar{min-width:140px}.cols{margin-bottom:16px}
 .login{width:340px;display:flex;flex-direction:column;gap:14px}
 .login h1{text-align:center}.login label{display:flex;flex-direction:column;gap:5px}
 .att input[type=time]{width:120px}

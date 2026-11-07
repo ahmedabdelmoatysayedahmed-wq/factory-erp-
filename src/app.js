@@ -208,29 +208,38 @@ app.post('/password', (req, res) => {
 });
 
 // ---------- شاشات عامة لكل الأقسام (إضافة / تعديل / حذف / بحث) ----------
-// ---------- استيراد الموظفين من Excel ----------
-const { parseEmployees, importEmployees } = require('./import-employees');
-app.get('/r/employees/import', need('employees', 'edit'), (req, res) => res.render('import'));
-app.post('/r/employees/import', need('employees', 'edit'), express.raw({ type: '*/*', limit: '10mb' }), async (req, res) => {
+// ---------- استيراد من Excel (الموظفين / الإسطمبات) ----------
+const { importers } = require('./importers');
+const getImporter = (req, res, next) => {
+  req.imp = importers[req.params.res];
+  return req.imp ? need(req.params.res, 'edit')(req, res, next) : res.status(404).render('error', { msg: 'الصفحة غير موجودة' });
+};
+app.get('/r/:res/import', getImporter, (req, res) => res.render('import', { imp: req.imp, rk: req.params.res }));
+app.post('/r/:res/import', getImporter, express.raw({ type: '*/*', limit: '10mb' }), async (req, res) => {
   const tr = res.locals.t;
   try {
     if (!req.body || !req.body.length) throw new Error('اختار ملف Excel الأول');
-    const list = await parseEmployees(req.body);
-    if (!list.length) throw new Error('الملف مافيهوش موظفين');
+    const list = await req.imp.parse(req.body);
+    if (!list.length) throw new Error('الملف مافيهوش بيانات');
     if (req.query.preview) return res.json({ ok: true, rows: list });
-    res.json({ ok: true, ...importEmployees(db, list) });
+    res.json({ ok: true, ...req.imp.importRows(db, list) });
   } catch (e) {
-    const msg = /zip|spreadsheet|xlsx/i.test(e.message) ? 'الملف ده مش ملف Excel (.xlsx)' : e.message;
+    const msg = e.tr ? e.tr : /zip|spreadsheet|xlsx|end of data|signature/i.test(e.message) ? 'الملف ده مش ملف Excel (.xlsx)' : e.message;
     res.status(400).json({ ok: false, error: tr(msg) });
   }
 });
 
 // ---------- بيانات تجريبية / بداية جديدة (مدير النظام) ----------
-const { seedDemo, clearData, hasOnlyOldFakeEmployees } = require('./demo');
+const { seedDemo, clearData, hasOnlyOldFakeEmployees, hasOnlyOldFakeMolds } = require('./demo');
 // مرة واحدة: لو قاعدة البيانات فيها الموظفين الوهميين القدام بس، نعيد البيانات التجريبية بموظفين المصنع
 if (db.getSetting('roster_v1') !== '1') {
   if (hasOnlyOldFakeEmployees(db)) { seedDemo(db, { resetEmployees: true }); console.log('Demo data updated with the factory employees list'); }
   db.setSetting('roster_v1', '1');
+}
+// مرة واحدة: لو الإسطمبات هي الوهمية القديمة بس، نعيد البيانات التجريبية بإسطمبات المصنع (والموظفين زي ما هما)
+if (db.getSetting('molds_v1') !== '1') {
+  if (hasOnlyOldFakeMolds(db)) { seedDemo(db, { keepEmployees: true }); console.log('Demo data updated with the factory molds list'); }
+  db.setSetting('molds_v1', '1');
 }
 app.post('/settings/demo', need('users', 'edit'), (req, res) => {
   const n = seedDemo(db, { keepEmployees: true, resetEmployees: !!req.body.reset_employees });
