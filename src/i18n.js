@@ -6,7 +6,7 @@ const EN = {
   'تعديل': 'Edit', 'حذف': 'Delete', 'إضافة': 'Add', 'بحث...': 'Search...', 'من': 'From', 'إلى': 'To', 'تصفية': 'Filter', 'مسح': 'Clear',
   'الكل': 'All', 'لا توجد بيانات': 'No data', 'متأكد من الحذف؟': 'Are you sure you want to delete?', '— اختر —': '— Select —',
   'حفظ وإضافة جديد': 'Save & add another', 'عرض': 'Show', 'طباعة': 'Print', 'English': 'English', 'عربي': 'عربي',
-  'القائمة': 'Menu', 'مرجع المورد': 'Supplier Ref.', 'رقم القطعة عندنا': 'Our Part No.', 'رقم OEM': 'OEM No.',
+  'القائمة': 'Menu', 'مسح القائمة كلها': 'Clear the whole list', 'مسح كل الإسطمبات القادمة؟': 'Delete all upcoming molds?', 'تم مسح {0} إسطمبة من القائمة': '{0} molds removed from the list', 'مرجع المورد': 'Supplier Ref.', 'رقم القطعة عندنا': 'Our Part No.', 'رقم OEM': 'OEM No.',
   'تاريخ التجربة (T0)': 'Trial Date (T0)', 'خامة المنتج': 'Product Material', 'نوع الصلب': 'Steel', 'نوع الرانر': 'Runner', 'زي 1 أو 1+1 أو R+L 2': 'e.g. 1, 1+1 or R+L 2',
   'الإسطمبات القادمة': 'Upcoming Molds', 'إسطمبة قادمة': 'Upcoming Mold', 'إسطمبات قادمة': 'Upcoming molds',
   'المصنّع': 'Producer', 'الوكيل / المسؤول': 'Agent', 'تاريخ الطلب': 'Order Date', 'الوصول المتوقع': 'Expected Arrival', 'السعر': 'Price', 'العملة': 'Currency',

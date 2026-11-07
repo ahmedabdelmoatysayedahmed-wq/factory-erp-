@@ -343,6 +343,13 @@ app.post(['/r/:res', '/r/:res/:id'], getRes, needRes('edit'), (req, res) => {
   }
   showForm(req, res, { ...row, id }, error);
 });
+// مسح قائمة الإسطمبات القادمة كلها
+app.post('/r/upcoming_molds/clear', need('upcoming_molds', 'edit'), (req, res) => {
+  const n = db.prepare('DELETE FROM upcoming_molds').run().changes;
+  flash(req, 'ok', ['تم مسح {0} إسطمبة من القائمة', n]);
+  res.redirect('/r/upcoming_molds');
+});
+
 // استلام إسطمبة قادمة: بتتنقل لقائمة الإسطمبات (ومعاها منتج بنفس الرقم)
 // كود الإسطمبة = رقم القطعة عندنا لو معروف، وإلا مرجع المورد
 app.post('/r/upcoming_molds/:id/receive', need('molds', 'edit'), (req, res) => {

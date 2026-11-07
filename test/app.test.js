@@ -147,6 +147,7 @@ test('full workflow', async () => {
   const up = (await req('GET', '/r/upcoming_molds')).text;
   assert.match(up, /\(1\)/);
   assert.match((await req('GET', '/?date=2026-11-07')).text, /إسطمبات قادمة/);
+  assert.match(up, /مسح القائمة كلها/);
   const cy = /action="\/r\/upcoming_molds\/(\d+)\/receive"/.exec(up)[1];
   const recv = await req('POST', `/r/upcoming_molds/${cy}/receive`, {});
   assert.equal(recv.location, '/r/upcoming_molds');
@@ -183,4 +184,16 @@ test('full workflow', async () => {
   assert.equal((await sv('GET', '/r/employees')).status, 200);
   assert.doesNotMatch((await sv('GET', '/r/employees')).text, /المرتب/);
   assert.match((await req('GET', '/r/employees/new')).text, /المرتب/);
+});
+
+test('clear upcoming molds button empties the list', async () => {
+  const req = client();
+  await req('POST', '/login', { username: 'admin', password: 'admin123' });
+  await req('POST', '/r/upcoming_molds/clear', {}); // نبدأ من قائمة فاضية
+  for (const c of ['CL-1', 'CL-2']) await req('POST', '/r/upcoming_molds', { code: c, name: c, status: 'manufacturing' });
+  assert.match((await req('GET', '/r/upcoming_molds')).text, /\(2\)/);
+  await req('POST', '/r/upcoming_molds/clear', {});
+  const after = (await req('GET', '/r/upcoming_molds')).text;
+  assert.match(after, /\(0\)/);
+  assert.doesNotMatch(after, /مسح القائمة كلها/);
 });

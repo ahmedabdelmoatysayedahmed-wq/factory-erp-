@@ -2,6 +2,7 @@
 <div class="head">
   <h1><%= t(r.title) %> <small>(<%= rows.length %>)</small></h1>
   <% if (can(rk, 'edit')) { %><div class="btns" style="margin:0">
+    <% if (rk === 'upcoming_molds' && rows.length) { %><form method="post" action="/r/upcoming_molds/clear" class="inline" onsubmit="return confirm('<%= t('مسح كل الإسطمبات القادمة؟') %>')"><button class="btn danger-outline">🗑 <%= t('مسح القائمة كلها') %></button></form><% } %>
     <% if (rk === 'employees' || rk === 'molds' || rk === 'upcoming_molds') { %><a class="btn" href="/r/<%= rk %>/import">📥 <%= t('استيراد من Excel') %></a><% } %>
     <a class="btn primary" href="/r/<%= rk %>/new">+ <%= t('إضافة') %> <%= t(r.single) %></a></div><% } %>
 </div>
