@@ -15,7 +15,7 @@ test('old fake demo employees are replaced by the factory roster on startup', ()
   assert.ok(db.prepare('SELECT COUNT(*) c FROM production_logs').get().c > 0);
   assert.equal(db.getSetting('roster_v1'), '1');
   assert.equal(db.prepare('SELECT COUNT(*) c FROM molds').get().c, 101);
-  assert.equal(db.prepare('SELECT COUNT(*) c FROM upcoming_molds').get().c, 83);
+  assert.equal(db.prepare('SELECT COUNT(*) c FROM upcoming_molds').get().c, 0);
   assert.equal(db.getSetting('molds_v1'), '1');
 });
 
@@ -48,5 +48,18 @@ test('a database where factory molds were put in Upcoming Molds gets fixed once'
     require('./src/app');
     console.log(JSON.stringify({ molds: db.prepare('SELECT COUNT(*) c FROM molds').get().c, up: db.prepare('SELECT COUNT(*) c FROM upcoming_molds').get().c }));
   `], { cwd: path.join(__dirname, '..'), env: { ...process.env, DB_FILE: path.join(tmp, 'x.db'), NO_BACKUP: '1' } }).toString().trim().split('\n').pop();
-  assert.deepEqual(JSON.parse(out), { molds: 101, up: 83 });
+  assert.deepEqual(JSON.parse(out), { molds: 101, up: 0 });
+});
+
+test('demo upcoming molds from the previous version are removed once, imported ones are kept', () => {
+  const { execFileSync } = require('child_process');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'erp-m4-'));
+  const out = execFileSync(process.execPath, ['-e', `
+    const db = require('./src/db');
+    for (const k of ['roster_v1', 'molds_v1', 'upcoming_v1', 'upcoming_v2']) db.setSetting(k, '1');
+    for (const c of ['CYNTIA-01', 'JESSE-10a', 'SHIDA-23-198', 'MY-OWN-01']) db.prepare('INSERT INTO upcoming_molds (code, name) VALUES (?, ?)').run(c, c);
+    require('./src/app');
+    console.log(JSON.stringify(db.prepare('SELECT code FROM upcoming_molds').all().map((r) => r.code)));
+  `], { cwd: path.join(__dirname, '..'), env: { ...process.env, DB_FILE: path.join(tmp, 'x.db'), NO_BACKUP: '1' } }).toString().trim().split('\n').pop();
+  assert.deepEqual(JSON.parse(out), ['MY-OWN-01']);
 });

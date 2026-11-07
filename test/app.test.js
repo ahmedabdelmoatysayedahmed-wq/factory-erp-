@@ -138,20 +138,20 @@ test('full workflow', async () => {
   assert.match((await req('GET', '/r/molds')).text, /\(101\)/);
   assert.match((await req('GET', '/r/molds')).text, /ANMBBS027 RA/);
   assert.match((await req('GET', '/r/molds?producer=SHIDA')).text, /\(23\)/); // فلتر المصنّع في الإسطمبات
-  const up = (await req('GET', '/r/upcoming_molds')).text;
-  assert.match(up, /\(83\)/);
-  assert.match(up, /CYNTIA-01/);
-  assert.doesNotMatch(up, /ANMBBS027 RA/);
-  assert.match((await req('GET', '/r/upcoming_molds?producer=SHIDA')).text, /\(17\)/);
-  assert.match((await req('GET', '/?date=2026-11-07')).text, /إسطمبات قادمة/);
+  assert.match((await req('GET', '/r/upcoming_molds')).text, /\(0\)/); // القادمة فاضية لحد الاستيراد
+  assert.doesNotMatch((await req('GET', '/?date=2026-11-07')).text, /إسطمبات قادمة/); // مفيش قادمة => مفيش مربع
 
   // استلام إسطمبة قادمة => بتتنقل للإسطمبات ومعاها منتج
-  // CYNTIA-01 ليها رقم قطعة مزدوج (L/R) => كود الإسطمبة بيبقى مرجع المورد، والعيون R+L 2 => 2
-  const cy = /action="\/r\/upcoming_molds\/(\d+)\/receive"[\s\S]*?CYNTIA-01/.exec(up)[1];
+  // رقم القطعة مزدوج (L/R) => كود الإسطمبة بيبقى مرجع المورد، والعيون R+L 2 => 2
+  await req('POST', '/r/upcoming_molds', { code: 'CY-TEST-01', name: 'حامل اكصدام تجريبي', producer: 'CYNTIA', part_no: 'AAA1LA/AAA1RA', cavities: 'R+L 2', status: 'manufacturing' });
+  const up = (await req('GET', '/r/upcoming_molds')).text;
+  assert.match(up, /\(1\)/);
+  assert.match((await req('GET', '/?date=2026-11-07')).text, /إسطمبات قادمة/);
+  const cy = /action="\/r\/upcoming_molds\/(\d+)\/receive"/.exec(up)[1];
   const recv = await req('POST', `/r/upcoming_molds/${cy}/receive`, {});
   assert.equal(recv.location, '/r/upcoming_molds');
-  assert.match((await req('GET', '/r/upcoming_molds')).text, /\(82\)/);
-  const molds2 = (await req('GET', '/r/molds?q=CYNTIA-01')).text;
+  assert.match((await req('GET', '/r/upcoming_molds')).text, /\(0\)/);
+  const molds2 = (await req('GET', '/r/molds?q=CY-TEST-01')).text;
   assert.match(molds2, /\(1\)/);
   assert.match(molds2, /data-label="عدد العيون">2</);
 

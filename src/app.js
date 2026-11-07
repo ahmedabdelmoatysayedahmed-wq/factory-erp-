@@ -248,6 +248,12 @@ if (db.getSetting('upcoming_v2') !== '1') {
   if (needsUpcomingFix(db)) { seedDemo(db, { keepEmployees: true }); console.log('Demo data fixed: factory molds in Molds, molds in China in Upcoming Molds'); }
   db.setSetting('upcoming_v1', '1'); db.setSetting('upcoming_v2', '1');
 }
+// مرة واحدة: شيل الإسطمبات القادمة اللي كانت متحطة كبيانات تجريبية (القائمة بتتملى بالاستيراد)
+if (db.getSetting('upcoming_v3') !== '1') {
+  const n = db.prepare("DELETE FROM upcoming_molds WHERE code LIKE 'CYNTIA-%' OR code LIKE 'JESSE-%' OR code LIKE 'SHIDA-23-%'").run().changes;
+  if (n) console.log(`Removed ${n} demo upcoming molds (Upcoming Molds is now empty for your import)`);
+  db.setSetting('upcoming_v3', '1');
+}
 app.post('/settings/demo', need('users', 'edit'), (req, res) => {
   const n = seedDemo(db, { keepEmployees: true, resetEmployees: !!req.body.reset_employees });
   flash(req, 'ok', ['تمت إضافة بيانات تجريبية (إنتاج وحضور آخر أسبوعين) على {0} موظف', n]);

@@ -1,7 +1,6 @@
 // بيانات تجريبية للعرض والتدريب
 const ROSTER = require('./demo-employees');
 const MOLDS = require('./demo-molds');
-const UPCOMING = require('./demo-upcoming');
 // أسامي الإسطمبات الوهمية اللي كانت في النسخ القديمة
 const OLD_FAKE_MOLDS = ['إسطمبة غطاء 38', 'إسطمبة جركن 5L', 'إسطمبة برطمان', 'إسطمبة غطاء 28 (احتياطي)'];
 // أسامي الموظفين الوهميين اللي كانت في النسخ القديمة من البيانات التجريبية
@@ -48,8 +47,7 @@ function seedDemo(db, { keepEmployees = false, resetEmployees = false } = {}) {
     });
     const prod = USED.map((i) => allProducts[i]);
     const molds = USED.map((i) => allMolds[i]);
-    // الإسطمبات اللي بتتصنع في الصين (src/demo-upcoming.js)
-    for (const u of UPCOMING) ins('upcoming_molds', { ...u, status: 'manufacturing' });
+    // «الإسطمبات القادمة» بتفضل فاضية - بتتملى بالاستيراد من Excel
     const mats = [['بولي إيثيلين HDPE', 'كجم', 1000, 52], ['بولي بروبلين PP', 'كجم', 800, 48], ['ماستر باتش أزرق', 'كجم', 30, 180], ['ماستر باتش أبيض', 'كجم', 30, 150], ['كراتين تعبئة', 'كرتونة', 200, 9]]
       .map(([name, unit, min, cost], i) => ins('materials', { code: 'R' + (i + 1), name, unit, min_stock: min, unit_cost: cost, supplier: i < 2 ? 'مورد خامات' : 'مورد محلي' }));
     [[0, 5000], [1, 3000], [2, 60], [3, 100], [4, 1500]].forEach(([m, q]) => ins('stock_movements', { date: day(14), material_id: mats[m], type: 'in', qty: q, reference: 'رصيد افتتاحي' }));
@@ -104,4 +102,4 @@ function hasOnlyOldFakeEmployees(db) {
   return names.length > 0 && names.every((n) => OLD_FAKE.includes(n));
 }
 
-module.exports = { seedDemo, clearData, hasOnlyOldFakeEmployees, hasOnlyOldFakeMolds, needsUpcomingFix, ROSTER, MOLDS, UPCOMING };
+module.exports = { seedDemo, clearData, hasOnlyOldFakeEmployees, hasOnlyOldFakeMolds, needsUpcomingFix, ROSTER, MOLDS };
