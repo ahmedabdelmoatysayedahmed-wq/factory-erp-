@@ -16,7 +16,7 @@
   <% } %>
   <button class="btn"><%= t('تصفية') %></button> <a href="/r/<%= rk %>"><%= t('مسح') %></a>
 </form>
-<% const cols = [...r.fields.filter(f => f.list), ...(r.computed || [])]; %>
+<% const cols = [...r.fields.filter(f => f.list && fieldOn(f)), ...(r.computed || [])]; %>
 <div class="table-wrap card">
 <table>
   <thead><tr><% for (const f of cols) { %><th><%= t(f.label) %></th><% } %><% if (can(rk, 'edit')) { %><th></th><% } %></tr></thead>

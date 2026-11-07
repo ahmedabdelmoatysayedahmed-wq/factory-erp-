@@ -36,8 +36,6 @@ db.transaction(() => {
         qty_produced: total - scrap, qty_scrap: scrap, hours_worked: hours, downtime_minutes: down, downtime_reason: down > 30 ? ['تغيير لون', 'انتظار مواد', 'عطل بسيط'][Math.floor(rnd() * 3)] : null });
     });
   }
-  ins('leaves', { employee_id: emps[5], type: 'annual', from_date: day(-2), to_date: day(-4), days: 3, status: 'pending', reason: 'ظروف عائلية' });
-  ins('leaves', { employee_id: emps[8], type: 'sick', from_date: day(6), to_date: day(5), days: 2, status: 'approved', reason: 'دور برد' });
   [['شاحنة نقل ربع نقل', 'سيارات', 450000, 7], ['ونش شوكة (كلارك)', 'معدات مناولة', 380000, 5], ['كمبيوتر المخزن', 'أجهزة', 18000, 7], ['كمبريسور هواء', 'معدات', 95000, 5], ['ميزان إلكتروني 300 كجم', 'أجهزة قياس', 12000, 7]]
     .forEach(([name, category, cost, c], i) => ins('assets', { code: 'A' + (i + 1), name, category, purchase_cost: cost, purchase_date: '2023-0' + (i + 2) + '-15', custodian_id: emps[c], location: i === 0 ? 'الجراج' : 'المصنع', status: 'in_service' }));
 })();

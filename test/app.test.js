@@ -43,6 +43,20 @@ test('full workflow', async () => {
     order_id: '1', qty_produced: '400', qty_scrap: '20', hours_worked: '8', downtime_minutes: '30' });
   assert.equal(r.location, '/r/production_logs');
   await req('POST', '/attendance', { date: '2026-11-01', emp: '1', status_1: 'present', in_1: '08:00', out_1: '16:00' });
+  // الجمعة راحة أسبوعية تلقائياً، وقسم الإجازات مقفول افتراضياً
+  const fri = await req('GET', '/attendance?date=2026-11-06');
+  assert.match(fri.text, /راحة أسبوعية/);
+  assert.match(fri.text, /value="off" selected/);
+  assert.doesNotMatch((await req('GET', '/attendance?date=2026-11-05')).text, /value="off" selected/);
+  assert.equal((await req('GET', '/r/leaves')).status, 403);
+  assert.doesNotMatch((await req('GET', '/r/employees/new')).text, /رصيد الإجازات/);
+  assert.doesNotMatch((await req('GET', '/')).text, /href="\/r\/leaves"/);
+  const rep0 = await req('GET', '/reports?from=2026-11-01&to=2026-11-07');
+  assert.match(rep0.text, /أيام العمل في الفترة: 6/); // 7 أيام ناقص الجمعة
+  await req('POST', '/settings', { weekly_off: ['5'], leaves_enabled: '1' });
+  assert.equal((await req('GET', '/r/leaves')).status, 200);
+  assert.match((await req('GET', '/r/employees/new')).text, /رصيد الإجازات/);
+
   await req('POST', '/r/leaves', { employee_id: '1', type: 'annual', from_date: '2026-11-03', to_date: '2026-11-05', status: 'approved' });
 
   const mats = await req('GET', '/r/materials');

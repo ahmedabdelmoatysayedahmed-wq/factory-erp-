@@ -25,8 +25,12 @@ app.use((req, res, next) => {
   res.locals.lang = lang;
   res.locals.dir = lang === 'ar' ? 'rtl' : 'ltr';
   res.locals.t = translator(lang);
+  const settings = db.getSettings();
+  req.settings = res.locals.settings = settings;
   res.locals.user = req.session.user || null;
-  res.locals.can = (s, a) => can(req.session.user, s, a);
+  res.locals.can = (s, a) => allowed(req, s, a);
+  // الحقول التابعة لقسم مقفول (زي رصيد الإجازات) مابتظهرش
+  res.locals.fieldOn = (f) => f.module !== 'leaves' || settings.leavesEnabled;
   res.locals.ROLES = ROLES;
   res.locals.PERMS = PERMS;
   res.locals.resources = resources;
@@ -57,12 +61,16 @@ app.post('/login', (req, res) => {
 app.post('/logout', (req, res) => req.session.destroy(() => res.redirect('/login')));
 
 app.use((req, res, next) => (req.session.user ? next() : res.redirect('/login')));
+// الصلاحية + إن القسم نفسه مفعّل (قسم الإجازات ممكن يتقفل من الإعدادات)
+const allowed = (req, section, action) =>
+  (section !== 'leaves' || req.settings.leavesEnabled) && can(req.session.user, section, action);
 const need = (section, action = 'view') => (req, res, next) =>
-  can(req.session.user, section, action) ? next() : res.status(403).render('error', { msg: 'ليس لديك صلاحية لهذه الصفحة' });
+  allowed(req, section, action) ? next() : res.status(403).render('error', { msg: 'ليس لديك صلاحية لهذه الصفحة' });
 
 // ---------- لوحة التحكم ----------
 app.get('/', (req, res) => {
   const d = req.query.date || today();
+  const offDay = db.isOffDay(d, req.settings);
   const one = (sql, ...p) => db.prepare(sql).get(...p);
   const all = (sql, ...p) => db.prepare(sql).all(...p);
   const stats = {
@@ -84,17 +92,17 @@ app.get('/', (req, res) => {
   const moldAlerts = all(`SELECT * FROM (SELECT t.*, COALESCE((SELECT CAST(SUM(qty_produced+qty_scrap) AS REAL)/MAX(t.cavities,1)
     FROM production_logs l WHERE l.mold_id=t.id AND (t.last_maintenance IS NULL OR l.date > t.last_maintenance)),0) since
     FROM molds t WHERE t.maintenance_every > 0) WHERE since >= maintenance_every * 0.9 OR status IN ('maintenance','damaged')`);
-  res.render('dashboard', { d, stats, machines, lowStock, orders, moldAlerts, STATUS });
+  res.render('dashboard', { d, offDay, stats, machines, lowStock, orders, moldAlerts, STATUS });
 });
 
 // ---------- الحضور والانصراف (شاشة يومية مجمعة) ----------
 app.get('/attendance', need('attendance'), (req, res) => {
   const d = req.query.date || today();
   const rows = db.prepare(`SELECT e.id, e.code, e.name, e.job_title, a.check_in, a.check_out, a.status, a.notes,
-      (SELECT type FROM leaves lv WHERE lv.employee_id=e.id AND lv.status='approved' AND ? BETWEEN lv.from_date AND lv.to_date LIMIT 1) leave_type
+      ${req.settings.leavesEnabled ? `(SELECT type FROM leaves lv WHERE lv.employee_id=e.id AND lv.status='approved' AND ? BETWEEN lv.from_date AND lv.to_date LIMIT 1)` : 'NULL AND ?'} leave_type
     FROM employees e LEFT JOIN attendance a ON a.employee_id=e.id AND a.date=?
     WHERE e.status='active' ORDER BY e.name`).all(d, d);
-  res.render('attendance', { d, rows, STATUS });
+  res.render('attendance', { d, rows, STATUS, offDay: db.isOffDay(d, req.settings) });
 });
 app.post('/attendance', need('attendance', 'edit'), (req, res) => {
   const d = req.body.date || today();
@@ -133,7 +141,12 @@ app.get('/reports', need('reports'), (req, res) => {
     GROUP BY m.id ORDER BY m.code`).all(from, to);
   const daily = db.prepare(`SELECT date, SUM(qty_produced) produced, SUM(qty_scrap) scrap
     FROM production_logs WHERE date BETWEEN ? AND ? GROUP BY date ORDER BY date`).all(from, to);
-  res.render('reports', { from, to, byEmployee, byMachine, daily });
+  // أيام العمل في الفترة (من غير أيام الراحة الأسبوعية، ولحد النهارده بس)
+  let workDays = 0;
+  const end = to < today() ? to : today();
+  for (let x = new Date(from + 'T00:00:00Z'); x.toISOString().slice(0, 10) <= end; x.setUTCDate(x.getUTCDate() + 1))
+    if (!db.isOffDay(x.toISOString().slice(0, 10), req.settings)) workDays++;
+  res.render('reports', { from, to, byEmployee, byMachine, daily, workDays });
 });
 
 // ---------- المستخدمين ----------
@@ -161,6 +174,17 @@ app.post('/users', need('users', 'edit'), (req, res) => {
     flash(req, 'err', e.message.includes('UNIQUE') ? 'اسم المستخدم موجود بالفعل' : e.message);
   }
   res.redirect('/users');
+});
+
+// ---------- الإعدادات (مدير النظام) ----------
+const DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+app.get('/settings', need('users', 'edit'), (req, res) => res.render('settings', { DAYS }));
+app.post('/settings', need('users', 'edit'), (req, res) => {
+  const off = [].concat(req.body.weekly_off || []).map(Number).filter((n) => n >= 0 && n <= 6);
+  db.setSetting('weekly_off', off.join(','));
+  db.setSetting('leaves_enabled', req.body.leaves_enabled ? '1' : '0');
+  flash(req, 'ok', 'تم الحفظ');
+  res.redirect('/settings');
 });
 
 app.get('/password', (req, res) => res.render('password', { error: null }));

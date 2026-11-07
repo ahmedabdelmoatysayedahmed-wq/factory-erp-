@@ -4,11 +4,12 @@
   <form method="get"><input type="date" name="date" value="<%= d %>" onchange="this.form.submit()"></form>
 </div>
 <% const editable = can('attendance', 'edit'); %>
+<% if (offDay) { %><div class="flash info"><%= t('اليوم ده راحة أسبوعية، والكل متسجل «راحة» تلقائياً. لو حد اشتغل غيّر حالته لـ «حاضر» واحفظ.') %></div><% } %>
 <form method="post" class="card">
   <input type="hidden" name="date" value="<%= d %>">
   <% if (editable) { %>
   <div class="btns">
-    <button type="button" class="btn" onclick="markAll('present')"><%= t('الكل حاضر') %></button>
+    <button type="button" class="btn" onclick="markAll('present', <%= offDay %>)"><%= t('الكل حاضر') %></button>
     <button class="btn primary"><%= t('حفظ الحضور') %></button>
   </div>
   <% } %>
@@ -16,11 +17,11 @@
   <table class="att">
     <thead><tr><th><%= t('الموظف') %></th><th><%= t('الحالة') %></th><th><%= t('حضور') %></th><th><%= t('انصراف') %></th><th><%= t('ملاحظات') %></th></tr></thead>
     <tbody>
-    <% for (const e of rows) { const st = e.status || (e.leave_type ? 'leave' : ''); %>
+    <% for (const e of rows) { const st = e.status || (e.leave_type ? 'leave' : offDay ? 'off' : ''); %>
       <tr><td data-label="<%= t('الموظف') %>"><input type="hidden" name="emp" value="<%= e.id %>"><b><%= e.name %></b> <small><%= e.job_title || '' %></small>
         <% if (e.leave_type) { %><span class="tag t-leave"><%= t('إجازة معتمدة') %></span><% } %></td>
       <td data-label="<%= t('الحالة') %>"><select name="status_<%= e.id %>" class="st" <%= editable ? '' : 'disabled' %>><option value="">—</option>
-        <% for (const [k, v] of Object.entries(STATUS.att)) { %><option value="<%= k %>" <%= st === k ? 'selected' : '' %>><%= t(v) %></option><% } %></select></td>
+        <% for (const [k, v] of Object.entries(STATUS.att)) { if (k === 'leave' && !settings.leavesEnabled && st !== 'leave') continue; %><option value="<%= k %>" <%= st === k ? 'selected' : '' %>><%= t(v) %></option><% } %></select></td>
       <td data-label="<%= t('حضور') %>"><input type="time" name="in_<%= e.id %>" value="<%= e.check_in || '' %>" <%= editable ? '' : 'disabled' %>></td>
       <td data-label="<%= t('انصراف') %>"><input type="time" name="out_<%= e.id %>" value="<%= e.check_out || '' %>" <%= editable ? '' : 'disabled' %>></td>
       <td data-label="<%= t('ملاحظات') %>"><input name="notes_<%= e.id %>" value="<%= e.notes || '' %>" <%= editable ? '' : 'disabled' %>></td></tr>
@@ -31,9 +32,9 @@
   </div>
 </form>
 <script>
-function markAll(s) {
+function markAll(s, offDay) {
   document.querySelectorAll('select.st').forEach(function (el) {
-    if (!el.value) { el.value = s; var tr = el.closest('tr'); var i = tr.querySelector('input[type=time]'); if (!i.value) i.value = '08:00'; }
+    if (!el.value || (offDay && el.value === 'off')) { el.value = s; var tr = el.closest('tr'); var i = tr.querySelector('input[type=time]'); if (!i.value) i.value = '08:00'; }
   });
 }
 </script>

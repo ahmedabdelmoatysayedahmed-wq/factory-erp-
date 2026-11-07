@@ -3,7 +3,7 @@
 <form method="post" action="/r/<%= rk %><%= row.id ? '/' + row.id : '' %>" class="card form">
   <% if (error) { %><div class="flash err"><%= t(error) %></div><% } %>
   <div class="grid">
-  <% for (const f of r.fields) { const v = row[f.name] ?? ''; %>
+  <% for (const f of r.fields.filter(fieldOn)) { const v = row[f.name] ?? ''; %>
     <label class="<%= f.type === 'textarea' ? 'full' : '' %>"><span><%= t(f.label) %><%= f.required ? ' *' : '' %></span>
     <% if (f.type === 'select') { %>
       <select name="<%= f.name %>" <%= f.required ? 'required' : '' %>><% if (!f.required) { %><option value="">—</option><% } %>

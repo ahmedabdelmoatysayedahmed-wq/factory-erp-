@@ -48,7 +48,7 @@ tr.late td{background:#fff4f2}
 .empty{text-align:center;color:var(--muted);padding:20px}
 .muted{color:var(--muted);font-size:13px}
 .flash{padding:10px 14px;border-radius:8px;margin-bottom:14px}
-.flash.ok{background:#e5f6ec;color:var(--ok)}.flash.err{background:#fdecea;color:var(--bad)}
+.flash.info{background:var(--pri-2);color:var(--pri)}.flash.ok{background:#e5f6ec;color:var(--ok)}.flash.err{background:#fdecea;color:var(--bad)}
 .tag{display:inline-block;padding:2px 9px;border-radius:20px;font-size:12px;background:#eef1f5;color:#465063}
 .t-running,.t-active,.t-available,.t-in_service,.t-done,.t-approved,.t-present,.t-in{background:#e5f6ec;color:var(--ok)}
 .t-maintenance,.t-pending,.t-late,.t-in_progress,.t-in_use,.t-adjust{background:#fff4e0;color:var(--warn)}
@@ -91,3 +91,6 @@ tr.late td{background:#fff4f2}
 .lang-float{position:fixed;top:14px;inset-inline-end:16px}
 [dir=ltr] body,[dir=ltr]{font-family:"Segoe UI",Roboto,Arial,sans-serif}
 @media (max-width:820px){[dir=ltr] .side{transform:translateX(-100%)} .hide-sm{display:none}}
+.days{border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:0 0 14px;display:flex;flex-wrap:wrap;gap:6px 18px}
+.days legend{padding:0 6px;font-weight:600}.days small{flex-basis:100%;color:var(--muted)}
+.form>small{display:block;margin:-6px 0 6px}

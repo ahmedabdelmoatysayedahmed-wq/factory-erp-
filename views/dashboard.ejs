@@ -4,14 +4,15 @@
   <h1><%= t('لوحة التحكم') %></h1>
   <form method="get"><input type="date" name="date" value="<%= d %>" onchange="this.form.submit()"></form>
 </div>
+<% if (offDay) { %><div class="flash info"><%= t('اليوم ده راحة أسبوعية') %></div><% } %>
 <div class="kpis">
   <div class="kpi"><b><%= stats.present %> <small><%= t('من أصل') %> <%= stats.employees %></small></b><span><%= t('حاضر من الموظفين') %></span></div>
   <div class="kpi"><b><%= stats.absent %></b><span><%= t('غائب') %></span></div>
-  <div class="kpi"><b><%= stats.onLeave %></b><span><%= t('في إجازة') %></span></div>
+  <% if (settings.leavesEnabled) { %><div class="kpi"><b><%= stats.onLeave %></b><span><%= t('في إجازة') %></span></div><% } %>
   <div class="kpi good"><b><%= n(stats.produced) %></b><span><%= t('إنتاج اليوم (سليم)') %></span></div>
   <div class="kpi bad"><b><%= n(stats.scrap) %></b><span><%= t('هالك') %><%= stats.produced + stats.scrap ? ' (' + (stats.scrap * 100 / (stats.produced + stats.scrap)).toFixed(1) + '%)' : '' %></span></div>
   <div class="kpi"><b><%= n(stats.downtime) %></b><span><%= t('دقائق توقف') %></span></div>
-  <% if (stats.pendingLeaves) { %><a class="kpi warnk" href="/r/leaves?status=pending"><b><%= stats.pendingLeaves %></b><span><%= t('طلبات إجازة تنتظر') %></span></a><% } %>
+  <% if (settings.leavesEnabled && stats.pendingLeaves) { %><a class="kpi warnk" href="/r/leaves?status=pending"><b><%= stats.pendingLeaves %></b><span><%= t('طلبات إجازة تنتظر') %></span></a><% } %>
 </div>
 
 <div class="cols">

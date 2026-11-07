@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS production_logs (
 CREATE TABLE IF NOT EXISTS attendance (
   id INTEGER PRIMARY KEY, employee_id INTEGER NOT NULL REFERENCES employees(id), date TEXT NOT NULL,
   check_in TEXT, check_out TEXT, status TEXT NOT NULL, notes TEXT, UNIQUE(employee_id, date));
+CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS leaves (
   id INTEGER PRIMARY KEY, employee_id INTEGER NOT NULL REFERENCES employees(id), type TEXT NOT NULL,
   from_date TEXT NOT NULL, to_date TEXT NOT NULL, days REAL, status TEXT DEFAULT 'pending', reason TEXT);
@@ -58,5 +59,20 @@ if (!db.prepare('SELECT 1 FROM users LIMIT 1').get()) {
   db.prepare('INSERT INTO users (username, password_hash, full_name, role) VALUES (?,?,?,?)')
     .run('admin', bcrypt.hashSync('admin123', 10), 'مدير النظام', 'admin');
 }
+
+// الإعدادات الافتراضية: الجمعة راحة أسبوعية، وقسم الإجازات مقفول
+const defaults = { weekly_off: '5', leaves_enabled: '0' };
+for (const [k, v] of Object.entries(defaults)) db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run(k, v);
+
+db.getSettings = () => {
+  const s = Object.fromEntries(db.prepare('SELECT key, value FROM settings').all().map((r) => [r.key, r.value]));
+  return {
+    weeklyOff: (s.weekly_off || '').split(',').filter(Boolean).map(Number), // 0 = الأحد ... 5 = الجمعة، 6 = السبت
+    leavesEnabled: s.leaves_enabled === '1',
+  };
+};
+db.setSetting = (k, v) => db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(k, String(v));
+// هل التاريخ ده يوم راحة أسبوعية؟
+db.isOffDay = (date, settings = db.getSettings()) => settings.weeklyOff.includes(new Date(date + 'T00:00:00Z').getUTCDay());
 
 module.exports = db;

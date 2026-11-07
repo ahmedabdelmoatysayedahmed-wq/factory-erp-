@@ -27,7 +27,7 @@ const resources = {
       { name: 'phone', label: 'التليفون', list: true },
       { name: 'hire_date', label: 'تاريخ التعيين', type: 'date' },
       { name: 'daily_target', label: 'المستهدف اليومي (قطعة)', type: 'number', list: true },
-      { name: 'annual_leave_balance', label: 'رصيد الإجازات السنوي (يوم)', type: 'number' },
+      { name: 'annual_leave_balance', label: 'رصيد الإجازات السنوي (يوم)', type: 'number', module: 'leaves' },
       { name: 'status', label: 'الحالة', type: 'select', options: opt(STATUS.employee), list: true },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' },
     ],
