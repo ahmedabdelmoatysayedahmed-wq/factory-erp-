@@ -60,7 +60,7 @@ tr.late td{background:#fff4f2}
 .bar em{position:relative;font-style:normal;font-size:12px;padding:0 8px;line-height:22px}
 .kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:16px}
 .kpi{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:4px;color:var(--text)}
-.kpi b{font-size:24px}.kpi span{color:var(--muted);font-size:13px}
+.kpi b{font-size:24px}.kpi b small{font-size:14px;color:var(--muted);font-weight:400}.kpi span{color:var(--muted);font-size:13px}
 .kpi.good b{color:var(--ok)}.kpi.bad b{color:var(--bad)}.kpi.warnk{border-color:#f1c27d;background:#fffaf0}
 .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px}
 .cols>.card{margin-bottom:0}.cols{margin-bottom:16px}

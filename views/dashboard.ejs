@@ -5,7 +5,7 @@
   <form method="get"><input type="date" name="date" value="<%= d %>" onchange="this.form.submit()"></form>
 </div>
 <div class="kpis">
-  <div class="kpi"><b><%= stats.present %> / <%= stats.employees %></b><span><%= t('حاضر من الموظفين') %></span></div>
+  <div class="kpi"><b><%= stats.present %> <small><%= t('من أصل') %> <%= stats.employees %></small></b><span><%= t('حاضر من الموظفين') %></span></div>
   <div class="kpi"><b><%= stats.absent %></b><span><%= t('غائب') %></span></div>
   <div class="kpi"><b><%= stats.onLeave %></b><span><%= t('في إجازة') %></span></div>
   <div class="kpi good"><b><%= n(stats.produced) %></b><span><%= t('إنتاج اليوم (سليم)') %></span></div>
@@ -31,7 +31,7 @@
   <table><thead><tr><th><%= t('الأمر') %></th><th><%= t('المنتج') %></th><th><%= t('التسليم') %></th><th><%= t('الإنجاز') %></th></tr></thead><tbody>
   <% for (const o of orders) { const p = o.qty_planned ? o.produced * 100 / o.qty_planned : 0; %>
     <tr class="<%= o.due_date && o.due_date < d && p < 100 ? 'late' : '' %>"><td><%= o.code %></td><td><%= o.product %></td><td><%= o.due_date || '—' %></td>
-    <td><div class="bar"><span style="width:<%= Math.min(100, p) %>%"></span><em><%= n(o.produced) %> / <%= n(o.qty_planned) %></em></div></td></tr>
+    <td><div class="bar"><span style="width:<%= Math.min(100, p) %>%"></span><em><%= n(o.produced) %> <%= t('من أصل') %> <%= n(o.qty_planned) %></em></div></td></tr>
   <% } %>
   <% if (!orders.length) { %><tr><td colspan="4" class="empty"><%= t('لا توجد أوامر مفتوحة') %></td></tr><% } %>
   </tbody></table>

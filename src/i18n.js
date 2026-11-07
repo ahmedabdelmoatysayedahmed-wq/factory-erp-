@@ -6,7 +6,7 @@ const EN = {
   'تعديل': 'Edit', 'حذف': 'Delete', 'إضافة': 'Add', 'بحث...': 'Search...', 'من': 'From', 'إلى': 'To', 'تصفية': 'Filter', 'مسح': 'Clear',
   'الكل': 'All', 'لا توجد بيانات': 'No data', 'متأكد من الحذف؟': 'Are you sure you want to delete?', '— اختر —': '— Select —',
   'حفظ وإضافة جديد': 'Save & add another', 'عرض': 'Show', 'طباعة': 'Print', 'English': 'English', 'عربي': 'عربي',
-  'القائمة': 'Menu',
+  'القائمة': 'Menu', 'من أصل': 'of',
   // القائمة
   'الرئيسية': 'Home', 'لوحة التحكم': 'Dashboard', 'تقارير الإنتاجية': 'Productivity Reports', 'الإنتاج': 'Production',
   'الإنتاج اليومي': 'Daily Production', 'أوامر التشغيل': 'Work Orders', 'المنتجات': 'Products', 'المعدات': 'Equipment',
