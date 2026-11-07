@@ -3,19 +3,24 @@ const session = require('express-session');
 const bcrypt = require('bcryptjs');
 const path = require('path');
 const db = require('./db');
+const SqliteStore = require('./session-store');
 const { ROLES, PERMS, can } = require('./roles');
 const { resources, STATUS, today } = require('./resources');
 const { LANGS, translator } = require('./i18n');
 
 const app = express();
+const prod = process.env.NODE_ENV === 'production';
+if (prod && !process.env.SESSION_SECRET) throw new Error('SESSION_SECRET is required in production');
+app.set('trust proxy', 1); // خلف سيرفر الاستضافة (HTTPS)
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, '..', 'views'));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use(session({
+  store: new SqliteStore(db),
   secret: process.env.SESSION_SECRET || 'change-this-secret',
   resave: false, saveUninitialized: false,
-  cookie: { httpOnly: true, sameSite: 'lax', maxAge: 12 * 3600 * 1000 },
+  cookie: { httpOnly: true, sameSite: 'lax', secure: prod, maxAge: 12 * 3600 * 1000 },
 }));
 
 // متغيرات متاحة لكل الشاشات
@@ -39,6 +44,8 @@ app.use((req, res, next) => {
   next();
 });
 const flash = (req, type, msg) => { req.session.flash = { type, msg }; };
+
+app.get('/healthz', (req, res) => res.send('ok'));
 
 // ---------- تغيير اللغة ----------
 app.get('/lang/:l', (req, res) => {

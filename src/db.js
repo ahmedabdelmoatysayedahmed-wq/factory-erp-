@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS leaves (
 
 if (!db.prepare('SELECT 1 FROM users LIMIT 1').get()) {
   db.prepare('INSERT INTO users (username, password_hash, full_name, role) VALUES (?,?,?,?)')
-    .run('admin', bcrypt.hashSync('admin123', 10), 'مدير النظام', 'admin');
+    .run('admin', bcrypt.hashSync(process.env.ADMIN_PASSWORD || 'admin123', 10), 'مدير النظام', 'admin');
 }
 
 // الإعدادات الافتراضية: الجمعة راحة أسبوعية، وقسم الإجازات مقفول

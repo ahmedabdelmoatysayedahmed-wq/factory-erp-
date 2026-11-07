@@ -31,6 +31,12 @@ npm start          # http://localhost:3000
 ## التقنيات
 Node.js + Express + SQLite (better-sqlite3) + EJS. قاعدة البيانات ملف واحد في `data/` — خد منه نسخة احتياطية بانتظام.
 
+## الرفع أونلاين (Render)
+1. ارفع المشروع على GitHub.
+2. من render.com: **New → Blueprint** واختار الـ repository. ملف `render.yaml` بيجهز كل حاجة.
+3. اكتب كلمة مرور قوية في `ADMIN_PASSWORD`. دي كلمة مرور `admin` أول مرة.
+4. قاعدة البيانات بتتحفظ على قرص دائم (`/var/data`)، فمش بتضيع لما السيرفر يعيد التشغيل أو تنزل نسخة جديدة.
+
 ## الاختبارات
 ```bash
 npm test
