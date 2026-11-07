@@ -5,7 +5,8 @@ const path = require('path');
 
 const dataDir = path.join(__dirname, '..', 'data');
 fs.mkdirSync(dataDir, { recursive: true });
-const db = new Database(process.env.DB_FILE || path.join(dataDir, 'factory.db'));
+const dbFile = process.env.DB_FILE || path.join(dataDir, 'factory.db');
+const db = new Database(dbFile);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
@@ -74,5 +75,18 @@ db.getSettings = () => {
 db.setSetting = (k, v) => db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(k, String(v));
 // هل التاريخ ده يوم راحة أسبوعية؟
 db.isOffDay = (date, settings = db.getSettings()) => settings.weeklyOff.includes(new Date(date + 'T00:00:00Z').getUTCDay());
+
+// نسخة احتياطية يومية (أول تشغيل في اليوم) - بنحتفظ بآخر 30 نسخة
+if (!process.env.NO_BACKUP) {
+  const dir = path.join(path.dirname(dbFile), 'backups');
+  const file = path.join(dir, `factory-${new Date().toISOString().slice(0, 10)}.db`);
+  if (!fs.existsSync(file)) {
+    fs.mkdirSync(dir, { recursive: true });
+    db.backup(file).then(() => {
+      const old = fs.readdirSync(dir).filter((f) => /^factory-.*\.db$/.test(f)).sort().slice(0, -30);
+      old.forEach((f) => fs.unlinkSync(path.join(dir, f)));
+    }).catch((e) => console.error('Backup failed:', e.message));
+  }
+}
 
 module.exports = db;

@@ -4,6 +4,7 @@ const fs = require('fs'); const os = require('os'); const path = require('path')
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'erp-'));
 process.env.DB_FILE = path.join(tmp, 'test.db');
+process.env.NO_BACKUP = '1';
 const app = require('../src/app');
 let server, base;
 

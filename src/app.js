@@ -294,6 +294,12 @@ app.use((req, res) => res.status(404).render('error', { msg: 'الصفحة غي�
 
 if (require.main === module) {
   const port = process.env.PORT || 3000;
-  app.listen(port, () => console.log(`Factory ERP running on http://localhost:${port}`));
+  app.listen(port, () => {
+    console.log(`Factory ERP running on http://localhost:${port}`);
+    // عناوين الشبكة المحلية علشان الموبايلات تفتح البرنامج على نفس الواي فاي
+    const ips = Object.values(require('os').networkInterfaces()).flat()
+      .filter((i) => i && i.family === 'IPv4' && !i.internal).map((i) => i.address);
+    for (const ip of ips) console.log(`From phones on the same Wi-Fi: http://${ip}:${port}`);
+  });
 }
 module.exports = app;
