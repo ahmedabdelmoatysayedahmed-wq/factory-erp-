@@ -18,7 +18,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use(session({
   store: new SqliteStore(db),
-  secret: process.env.SESSION_SECRET || 'change-this-secret',
+  secret: process.env.SESSION_SECRET || db.config.sessionSecret || 'change-this-secret',
   resave: false, saveUninitialized: false,
   cookie: { httpOnly: true, sameSite: 'lax', secure: prod, maxAge: 12 * 3600 * 1000 },
 }));
@@ -268,7 +268,7 @@ app.post('/settings/demo', need('users', 'edit'), (req, res) => {
 });
 app.post('/settings/clear', need('users', 'edit'), (req, res) => {
   if (req.body.confirm !== 'مسح' && req.body.confirm !== 'DELETE') { flash(req, 'err', 'لازم تكتب كلمة التأكيد علشان المسح يتم'); return res.redirect('/settings'); }
-  clearData(db, { keepEmployees: !!req.body.keep_employees });
+  clearData(db, { keepEmployees: !!req.body.keep_employees, keepMolds: !!req.body.keep_molds });
   flash(req, 'ok', 'تم مسح البيانات');
   res.redirect('/settings');
 });

@@ -8,6 +8,8 @@ rem ============================================================
 set "APP=%LOCALAPPDATA%\FactoryERP"
 set "REPO=https://github.com/ahmedabdelmoatysayedahmed-wq/factory-erp-/archive/refs/heads/main.zip"
 set "PORT=3000"
+rem Automatic mode installed? The program already runs in the background: just open it.
+schtasks /query /tn FactoryERP >nul 2>nul && (start "" http://localhost:%PORT%/ & exit /b 0)
 
 echo.
 echo  ==========================================

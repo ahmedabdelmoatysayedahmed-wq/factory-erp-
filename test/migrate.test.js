@@ -63,3 +63,15 @@ test('demo upcoming molds from the previous version are removed once, imported o
   `], { cwd: path.join(__dirname, '..'), env: { ...process.env, DB_FILE: path.join(tmp, 'x.db'), NO_BACKUP: '1' } }).toString().trim().split('\n').pop();
   assert.deepEqual(JSON.parse(out), ['MY-OWN-01']);
 });
+
+test('daily backup is copied to backupCopyDir from data/config.json', () => {
+  const { execFileSync } = require('child_process');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'erp-b-'));
+  const copyDir = path.join(tmp, 'OneDrive', 'FactoryERP-Backups');
+  fs.writeFileSync(path.join(tmp, 'config.json'), JSON.stringify({ backupCopyDir: copyDir }));
+  const env = { ...process.env, DB_FILE: path.join(tmp, 'factory.db') }; delete env.NO_BACKUP;
+  execFileSync(process.execPath, ['-e', "require('./src/db')"], { cwd: path.join(__dirname, '..'), env });
+  const today = `factory-${new Date().toISOString().slice(0, 10)}.db`;
+  assert.ok(fs.existsSync(path.join(tmp, 'backups', today)));
+  assert.ok(fs.existsSync(path.join(copyDir, today)));
+});

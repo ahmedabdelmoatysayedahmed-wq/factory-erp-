@@ -111,9 +111,12 @@ test('full workflow', async () => {
   assert.match((await req('GET', '/r/production_logs')).text, /مكبس حقن 1/);
   await req('POST', '/settings/clear', { confirm: 'غلط', keep_employees: '1' });
   assert.match((await req('GET', '/r/production_logs')).text, /مكبس حقن 1/); // ماتمسحش
-  await req('POST', '/settings/clear', { confirm: 'مسح', keep_employees: '1' });
+  const moldsBefore = /<small>\((\d+)\)/.exec((await req('GET', '/r/molds')).text)[1];
+  await req('POST', '/settings/clear', { confirm: 'مسح', keep_employees: '1', keep_molds: '1' });
   assert.doesNotMatch((await req('GET', '/r/production_logs')).text, /مكبس حقن 1/);
   assert.match((await req('GET', '/r/employees')).text, /موظف تجريبي أول/);
+  assert.match((await req('GET', '/r/molds')).text, new RegExp(`<small>\\(${moldsBefore}\\)`)); // الإسطمبات فضلت
+  assert.match((await req('GET', '/r/machines')).text, /<small>\(0\)/); // الماكينات التجريبية اتشالت
 
   // استيراد الإسطمبات من Excel: كل إسطمبة بيتعملها منتج بنفس رقم القطعة
   const mx = fs.readFileSync(path.join(__dirname, 'fixtures', 'molds-sample.xlsx'));

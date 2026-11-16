@@ -103,18 +103,30 @@ db.setSetting = (k, v) => db.prepare('INSERT INTO settings (key, value) VALUES (
 // هل التاريخ ده يوم راحة أسبوعية؟
 db.isOffDay = (date, settings = db.getSettings()) => settings.weeklyOff.includes(new Date(date + 'T00:00:00Z').getUTCDay());
 
-// نسخة احتياطية يومية (أول تشغيل في اليوم) - بنحتفظ بآخر 30 نسخة
-if (!process.env.NO_BACKUP) {
+// نسخة احتياطية يومية - بنحتفظ بآخر 30 نسخة
+// لو data/config.json فيه backupCopyDir (زي فولدر OneDrive) النسخة بتتنسخ هناك كمان علشان تبقى برا الجهاز
+function readConfig() {
+  try { return JSON.parse(fs.readFileSync(path.join(path.dirname(dbFile), 'config.json'), 'utf8')); } catch { return {}; }
+}
+function prune(dir) {
+  fs.readdirSync(dir).filter((f) => /^factory-.*\.db$/.test(f)).sort().slice(0, -30).forEach((f) => fs.unlinkSync(path.join(dir, f)));
+}
+db.config = readConfig();
+db.backupNow = () => {
+  const name = `factory-${new Date().toISOString().slice(0, 10)}.db`;
   const dir = path.join(path.dirname(dbFile), 'backups');
-  const file = path.join(dir, `factory-${new Date().toISOString().slice(0, 10)}.db`);
-  if (!fs.existsSync(file)) {
-    fs.mkdirSync(dir, { recursive: true });
-    try {
-      db.prepare('VACUUM INTO ?').run(file);
-      const old = fs.readdirSync(dir).filter((f) => /^factory-.*\.db$/.test(f)).sort().slice(0, -30);
-      old.forEach((f) => fs.unlinkSync(path.join(dir, f)));
-    } catch (e) { console.error('Backup failed:', e.message); }
-  }
+  const file = path.join(dir, name);
+  try {
+    if (!fs.existsSync(file)) { fs.mkdirSync(dir, { recursive: true }); db.prepare('VACUUM INTO ?').run(file); prune(dir); }
+    const copyDir = readConfig().backupCopyDir;
+    if (copyDir && !fs.existsSync(path.join(copyDir, name))) {
+      fs.mkdirSync(copyDir, { recursive: true }); fs.copyFileSync(file, path.join(copyDir, name)); prune(copyDir);
+    }
+  } catch (e) { console.error('Backup failed:', e.message); }
+};
+if (!process.env.NO_BACKUP) {
+  db.backupNow();
+  setInterval(db.backupNow, 3600e3).unref(); // كل ساعة بنشوف لو يوم جديد بدأ
 }
 
 module.exports = db;

@@ -8,9 +8,13 @@ const OLD_FAKE = ['محمد علي', 'أحمد حسن', 'محمود سيد', 'ك
 const TABLES = ['upcoming_molds', 'production_logs', 'stock_movements', 'attendance', 'leaves', 'production_orders', 'molds', 'assets', 'materials', 'products', 'machines'];
 
 // مسح البيانات (المستخدمين والإعدادات مابيتمسحوش)
-function clearData(db, { keepEmployees = false } = {}) {
+// keepMolds: بيسيب الإسطمبات ومنتجاتها والإسطمبات القادمة (بيشيل بس عداد الإنتاج التجريبي منها)
+function clearData(db, { keepEmployees = false, keepMolds = false } = {}) {
+  const keep = keepMolds ? ['molds', 'products', 'upcoming_molds'] : [];
   db.transaction(() => {
-    for (const t of TABLES) db.exec(`DELETE FROM ${t}`);
+    if (keepMolds) db.exec('UPDATE molds SET initial_shots=0, last_maintenance=NULL');
+    if (keepEmployees) db.exec('UPDATE assets SET custodian_id=NULL');
+    for (const t of TABLES) if (!keep.includes(t)) db.exec(`DELETE FROM ${t}`);
     if (!keepEmployees) db.exec('DELETE FROM employees');
   })();
 }
