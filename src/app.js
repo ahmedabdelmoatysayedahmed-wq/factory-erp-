@@ -93,6 +93,8 @@ app.get('/', (req, res) => {
     pendingLeaves: one(`SELECT COUNT(*) c FROM leaves WHERE status='pending'`).c,
     upcomingMolds: one(`SELECT COUNT(*) c FROM upcoming_molds`).c,
   };
+  const products = all(`SELECT p.code, p.name, SUM(l.qty_produced) produced, SUM(l.qty_scrap) scrap
+    FROM production_logs l JOIN products p ON p.id = l.product_id WHERE l.date=? GROUP BY p.id ORDER BY produced DESC`, d);
   const machines = all(`SELECT m.*, COALESCE(SUM(l.qty_produced),0) produced, COALESCE(SUM(l.hours_worked),0) hours
     FROM machines m LEFT JOIN production_logs l ON l.machine_id=m.id AND l.date=? GROUP BY m.id ORDER BY m.code`, d);
   const lowStock = all(`SELECT * FROM (SELECT t.*, COALESCE((SELECT SUM(CASE WHEN type='out' THEN -qty ELSE qty END)
@@ -102,7 +104,7 @@ app.get('/', (req, res) => {
   const moldAlerts = all(`SELECT * FROM (SELECT t.*, COALESCE((SELECT CAST(SUM(qty_produced+qty_scrap) AS REAL)/MAX(t.cavities,1)
     FROM production_logs l WHERE l.mold_id=t.id AND (t.last_maintenance IS NULL OR l.date > t.last_maintenance)),0) since
     FROM molds t WHERE t.maintenance_every > 0) WHERE since >= maintenance_every * 0.9 OR status IN ('maintenance','damaged')`);
-  res.render('dashboard', { d, offDay, stats, machines, lowStock, orders, moldAlerts, STATUS });
+  res.render('dashboard', { d, offDay, products, stats, machines, lowStock, orders, moldAlerts, STATUS });
 });
 
 // ---------- الحضور والانصراف (شاشة يومية مجمعة) ----------
@@ -156,7 +158,15 @@ app.get('/reports', need('reports'), (req, res) => {
   const end = to < today() ? to : today();
   for (let x = new Date(from + 'T00:00:00Z'); x.toISOString().slice(0, 10) <= end; x.setUTCDate(x.getUTCDate() + 1))
     if (!db.isOffDay(x.toISOString().slice(0, 10), req.settings)) workDays++;
-  res.render('reports', { from, to, byEmployee, byMachine, daily, workDays });
+  // إنتاج كل منتج (قطعة) في الفترة - مع بحث باسم/رقم القطعة
+  const pq = (req.query.product || '').trim();
+  const byProduct = db.prepare(`SELECT p.id, p.code, p.name, p.unit,
+      SUM(l.qty_produced) produced, SUM(l.qty_scrap) scrap, COUNT(DISTINCT l.date) days,
+      GROUP_CONCAT(DISTINCT m.code) machines
+    FROM production_logs l JOIN products p ON p.id = l.product_id LEFT JOIN machines m ON m.id = l.machine_id
+    WHERE l.date BETWEEN ? AND ? AND (? = '' OR p.name LIKE ? OR p.code LIKE ? OR p.name_en LIKE ?)
+    GROUP BY p.id ORDER BY produced DESC`).all(from, to, pq, `%${pq}%`, `%${pq}%`, `%${pq}%`);
+  res.render('reports', { from, to, byEmployee, byMachine, daily, workDays, byProduct, pq });
 });
 
 // ---------- المستخدمين ----------

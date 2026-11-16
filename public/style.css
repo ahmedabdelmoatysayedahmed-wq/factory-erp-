@@ -68,6 +68,7 @@ tr.late td{background:#fff4f2}
 .login{width:340px;display:flex;flex-direction:column;gap:14px}
 .login h1{text-align:center}.login label{display:flex;flex-direction:column;gap:5px}
 .att input[type=time]{width:120px}
+tr.total td{border-top:2px solid var(--line);background:#fafbfc}
 .chart .row{display:flex;align-items:center;gap:10px;margin:4px 0}
 .chart .d{width:48px;color:var(--muted);font-size:13px}
 .chart .b{flex:1;display:flex;height:16px;background:#f2f4f7;border-radius:4px;overflow:hidden}

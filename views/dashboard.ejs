@@ -29,6 +29,15 @@
 </section>
 
 <section class="card">
+  <h2><%= t('إنتاج اليوم حسب المنتج') %></h2>
+  <table><thead><tr><th><%= t('المنتج') %></th><th><%= t('الإنتاج') %></th><th><%= t('الهالك') %></th></tr></thead><tbody>
+  <% for (const p of products) { %><tr><td><%= p.name %> <small class="muted"><%= p.code || '' %></small></td><td class="nw"><b><%= n(p.produced) %></b></td><td class="nw"><%= n(p.scrap) %></td></tr><% } %>
+  <% if (!products.length) { %><tr><td colspan="3" class="empty"><%= t('لسه مفيش إنتاج متسجل النهارده') %> — <a href="/r/production_logs/new"><%= t('سجّل إنتاج') %></a></td></tr><% } %>
+  </tbody></table>
+  <p class="muted"><a href="/reports"><%= t('تقرير الإنتاج لأي فترة') %> ←</a></p>
+</section>
+
+<section class="card">
   <h2><%= t('أوامر التشغيل المفتوحة') %></h2>
   <table><thead><tr><th><%= t('الأمر') %></th><th><%= t('المنتج') %></th><th><%= t('التسليم') %></th><th><%= t('الإنجاز') %></th></tr></thead><tbody>
   <% for (const o of orders) { const p = o.qty_planned ? o.produced * 100 / o.qty_planned : 0; %>

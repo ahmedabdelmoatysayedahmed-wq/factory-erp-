@@ -66,6 +66,10 @@ test('full workflow', async () => {
   assert.match((await req('GET', '/r/production_orders')).text, /40%/);
   assert.match((await req('GET', '/r/leaves')).text, />3</);
   const rep = await req('GET', '/reports?from=2026-11-01&to=2026-11-30');
+  assert.match(rep.text, /إنتاج المنتجات/);
+  assert.match(rep.text, /<td>غطاء<\/td><td><b>400<\/b>/); // إنتاج المنتج في الفترة
+  assert.doesNotMatch((await req('GET', '/reports?from=2026-11-01&to=2026-11-30&product=' + encodeURIComponent('مش موجود'))).text, /<td>غطاء<\/td>/);
+  assert.match((await req('GET', '/?date=2026-11-01')).text, /إنتاج اليوم حسب المنتج[\s\S]*غطاء/);
   assert.match(rep.text, /80%/); // 400/500 مستهدف الموظف - و 400/(100*8)=50% للماكينة
   assert.match(rep.text, /50%/);
   const dash = await req('GET', '/?date=2026-11-01');
