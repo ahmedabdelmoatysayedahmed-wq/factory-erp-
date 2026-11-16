@@ -7,6 +7,8 @@
     <% }) %>
     <small><%= t('أيام الراحة مابتتحسبش غياب، وشاشة الحضور بتسجلها «راحة» تلقائياً.') %></small>
   </fieldset>
+  <label><%= t('أقل رصيد للمنتج قبل التنبيه (الحد العام)') %><input type="number" name="product_min_stock" min="0" value="<%= settings.productMinStock %>"></label>
+  <small class="muted"><%= t('لو رصيد أي منتج نزل تحت الرقم ده يطلع تنبيه إنه محتاج إنتاج. وتقدر تحط حد مختلف لكل منتج من شاشة المنتجات.') %></small>
   <label class="chk"><input type="checkbox" name="leaves_enabled" value="1" <%= settings.leavesEnabled ? 'checked' : '' %>> <%= t('تفعيل قسم الإجازات') %></label>
   <small class="muted"><%= t('لو المصنع بدأ يدي إجازات (اعتيادية، مرضية، ...) فعّل القسم ده.') %></small>
   <div class="btns"><button class="btn primary"><%= t('حفظ') %></button></div>

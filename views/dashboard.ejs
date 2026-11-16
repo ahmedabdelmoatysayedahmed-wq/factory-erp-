@@ -49,6 +49,15 @@
 </section>
 
 <section class="card">
+  <h2>🏭 <%= t('منتجات محتاجة إنتاج') %></h2>
+  <table><thead><tr><th><%= t('المنتج') %></th><th><%= t('الرصيد') %></th><th><%= t('أقل رصيد (تنبيه)') %></th></tr></thead><tbody>
+  <% for (const p of lowProducts.slice(0, 8)) { %><tr><td><%= p.name %> <small class="muted"><%= p.code || '' %></small></td><td class="warn nw"><b><%= n(p.stock) %></b></td><td class="nw"><%= n(p.min) %></td></tr><% } %>
+  <% if (!lowProducts.length) { %><tr><td colspan="3" class="empty"><%= t('كل المنتجات رصيدها فوق الحد ✅') %></td></tr><% } %>
+  </tbody></table>
+  <% if (lowProducts.length) { %><p class="muted"><a href="/alerts"><%= t(['كل التنبيهات ({0})', lowProducts.length]) %> ←</a> · <a href="/plan?type=week"><%= t('خطة الأسبوع') %> ←</a></p><% } %>
+</section>
+
+<section class="card">
   <h2>⚠️ <%= t('مواد خام وصلت لحد الطلب') %></h2>
   <table><thead><tr><th><%= t('المادة') %></th><th><%= t('الرصيد') %></th><th><%= t('حد الطلب') %></th></tr></thead><tbody>
   <% for (const m of lowStock) { %><tr><td><%= m.name %></td><td class="warn"><%= n(m.stock) %> <%= m.unit || '' %></td><td><%= n(m.min_stock) %></td></tr><% } %>

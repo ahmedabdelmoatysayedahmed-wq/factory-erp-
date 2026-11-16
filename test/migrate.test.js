@@ -75,3 +75,19 @@ test('daily backup is copied to backupCopyDir from data/config.json', () => {
   assert.ok(fs.existsSync(path.join(tmp, 'backups', today)));
   assert.ok(fs.existsSync(path.join(copyDir, today)));
 });
+
+test('a fresh demo database is not regenerated again on first start', () => {
+  const { execFileSync } = require('child_process');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'erp-m5-'));
+  const env = { ...process.env, DB_FILE: path.join(tmp, 'x.db'), NO_BACKUP: '1' };
+  const cwd = path.join(__dirname, '..');
+  execFileSync(process.execPath, ['scripts/seed-demo.js'], { cwd, env });
+  const out = execFileSync(process.execPath, ['-e', `
+    const db = require('./src/db');
+    db.prepare("INSERT INTO products (code, name) VALUES ('KEEP-ME', 'منتج اتضاف بعد الديمو')").run();
+    require('./src/app');
+    console.log(JSON.stringify({ kept: !!db.prepare("SELECT 1 FROM products WHERE code='KEEP-ME'").get() }));
+  `], { cwd, env }).toString();
+  assert.doesNotMatch(out, /Demo data fixed|Demo data updated/);
+  assert.deepEqual(JSON.parse(out.trim().split('\n').pop()), { kept: true });
+});

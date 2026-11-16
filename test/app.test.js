@@ -204,3 +204,61 @@ test('clear upcoming molds button empties the list', async () => {
   assert.match(after, /\(0\)/);
   assert.doesNotMatch(after, /مسح القائمة كلها/);
 });
+
+test('finished goods stock, alerts under minimum, production plan', async () => {
+  const req = client();
+  await req('POST', '/login', { username: 'admin', password: 'admin123' });
+  await req('POST', '/settings', { weekly_off: ['5'], product_min_stock: '100' });
+  await req('POST', '/r/products', { code: 'PS-1', name: 'منتج مخزن تجريبي' });
+  await req('POST', '/r/employees', { code: 'ST1', name: 'عامل مخزن', status: 'active' });
+  await req('POST', '/r/machines', { code: 'MS1', name: 'ماكينة مخزن', status: 'running' });
+  const pid = /<option value="(\d+)"\s*>PS-1 - /.exec((await req('GET', '/r/product_movements/new')).text)[1];
+  const eid = /<option value="(\d+)"\s*>ST1 - /.exec((await req('GET', '/r/production_logs/new')).text)[1];
+  const mid = /<option value="(\d+)"\s*>MS1 - /.exec((await req('GET', '/r/production_logs/new')).text)[1];
+  const stockRow = async () => /PS-1<\/td><td[^>]*>[^<]*<\/td>\s*<td[^>]*class="([^"]*)"[^>]*><b>([^<]+)<\/b>/.exec((await req('GET', '/stock?q=PS-1')).text);
+
+  // منتج من غير رصيد = مش متابَع ومالوش تنبيه
+  assert.doesNotMatch((await req('GET', '/alerts')).text, /منتج مخزن تجريبي/);
+  // جرد 120 ثم صرف 50 => 70 تحت الحد (100) => تنبيه
+  await req('POST', '/r/product_movements', { date: '2026-10-01', product_id: pid, type: 'count', qty: '120' });
+  assert.equal((await stockRow())[2], '120');
+  await req('POST', '/r/product_movements', { date: '2026-10-02', product_id: pid, type: 'out', qty: '50' });
+  const low = await stockRow();
+  assert.equal(low[2], '70'); assert.equal(low[1], 'warn');
+  assert.match((await req('GET', '/alerts')).text, /منتج مخزن تجريبي/);
+  assert.match((await req('GET', '/r/products')).text, /class="bell on"/); // الجرس عليه رقم
+  assert.ok(JSON.parse((await req('GET', '/api/alerts')).text).products.includes('منتج مخزن تجريبي'));
+  // الإنتاج بيزوّد الرصيد: 70 + 200 = 270 => مفيش تنبيه
+  await req('POST', '/r/production_logs', { date: '2026-10-03', employee_id: eid, machine_id: mid, product_id: pid, qty_produced: '200' });
+  assert.equal((await stockRow())[2], '270');
+  assert.doesNotMatch((await req('GET', '/alerts')).text, /منتج مخزن تجريبي/);
+  // حد خاص بالمنتج (300) => تنبيه تاني
+  await req('POST', `/r/products/${pid}`, { code: 'PS-1', name: 'منتج مخزن تجريبي', min_stock: '300' });
+  assert.match((await req('GET', '/alerts')).text, /منتج مخزن تجريبي/);
+
+  // خطة شهر أكتوبر: 1000 => اتنتج 200 = 20%
+  await req('POST', '/plan', { type: 'month', date: '2026-10-10', product_id: pid, qty: '1000' });
+  const plan = (await req('GET', '/plan?type=month&date=2026-10-25')).text;
+  assert.match(plan, /منتج مخزن تجريبي/);
+  assert.match(plan, /<em>20%<\/em>/);
+  // المنتج تحت الحد ومش في خطة نوفمبر => مقترح
+  assert.match((await req('GET', '/plan?type=month&date=2026-11-05')).text, /تحت الحد ومش في الخطة[\s\S]*منتج مخزن تجريبي/);
+  // نسخ خطة أكتوبر لنوفمبر
+  await req('POST', '/plan/copy', { type: 'month', date: '2026-11-05' });
+  assert.match((await req('GET', '/plan?type=month&date=2026-11-05')).text, /value="1000"/);
+  // الأسبوع بيبدأ السبت
+  assert.match((await req('GET', '/plan?type=week&date=2026-11-16')).text, /2026-11-14 ← 2026-11-20/);
+
+  // استيراد رصيد من شيت المخزن => جرد 35، ورقم مش موجود بيتعدّى
+  const sx = fs.readFileSync(path.join(__dirname, 'fixtures', 'stock-sample.xlsx'));
+  const r = JSON.parse((await req('POST', '/r/product_movements/import', null, sx)).text);
+  assert.deepEqual(r, { ok: true, added: 1, updated: 0, skipped: 1 });
+  assert.equal((await stockRow())[2], '35');
+
+  // أمين المخزن يشوف المخزن ويسجل حركة، بس مايعدّلش الخطة
+  const s = client();
+  await s('POST', '/login', { username: 'store', password: 'store123' });
+  assert.equal((await s('GET', '/stock')).status, 200);
+  assert.equal((await s('GET', '/r/product_movements/new')).status, 200);
+  assert.equal((await s('POST', '/plan', { type: 'week', product_id: pid, qty: '5' })).status, 403);
+});

@@ -182,4 +182,37 @@ importers.upcoming_molds = {
   },
 };
 
+// رصيد مخزن المنتجات من شيت المخزن: بيتسجل "جرد" بتاريخ النهارده (أو التاريخ اللي في الملف)
+importers.product_movements = {
+  title: 'استيراد رصيد مخزن المنتجات من Excel',
+  columnsHint: 'رقم القطعة (Part Number / الكود)، الرصيد (الكمية / Qty / Stock)، والتاريخ لو موجود',
+  matchHint: 'كل صف بيتسجل جرد للمنتج ده (الرصيد الفعلي في المخزن). المنتج بيتعرف برقم القطعة، واللي رقمه مش موجود في المنتجات مش بيتضاف.',
+  preview: [['code', 'رقم القطعة'], ['name', 'الاسم'], ['qty', 'الرصيد'], ['date', 'التاريخ']],
+  async parse(buffer) {
+    const rows = await readTable(buffer, {
+      code: ['part number', 'part no', 'رقم القطعة', 'الكود', 'كود', 'code'],
+      name: ['المسمى', 'الاسم', 'المنتج', 'description', 'name'],
+      qty: ['الرصيد', 'الرصيد الحالي', 'الكمية', 'الكميه', 'رصيد', 'qty', 'quantity', 'stock', 'balance'],
+      date: ['التاريخ', 'تاريخ الجرد', 'date'],
+    }, 'qty');
+    const d = new Date().toISOString().slice(0, 10);
+    return rows.filter((r) => clean(r.code) && toNum(r.qty) !== null)
+      .map((r) => ({ code: clean(r.code), name: clean(r.name), qty: toNum(r.qty), date: toDate(r.date) || d }));
+  },
+  importRows(db, list) {
+    const res = { added: 0, updated: 0, skipped: 0 };
+    db.transaction(() => {
+      for (const r of list) {
+        const p = db.prepare('SELECT id FROM products WHERE code=?').get(r.code);
+        if (!p) { res.skipped++; continue; }
+        // جرد واحد لكل منتج في اليوم: لو موجود بيتحدث
+        const ex = db.prepare("SELECT id FROM product_movements WHERE product_id=? AND date=? AND type='count'").get(p.id, r.date);
+        upsert(db, 'product_movements', { date: r.date, product_id: p.id, type: 'count', qty: r.qty, reference: 'استيراد من المخزن' }, ex && ex.id);
+        res[ex ? 'updated' : 'added']++;
+      }
+    })();
+    return res;
+  },
+};
+
 module.exports = { importers };

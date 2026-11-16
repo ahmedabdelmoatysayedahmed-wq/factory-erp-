@@ -10,6 +10,7 @@ const STATUS = {
   move: { in: 'وارد', out: 'صرف', adjust: 'تسوية (+/-)' },
   order: { open: 'مفتوح', in_progress: 'قيد التشغيل', done: 'منتهي', cancelled: 'ملغي' },
   shift: { morning: 'صباحي', evening: 'مسائي', night: 'ليلي' },
+  productMove: { out: 'صرف / بيع', in: 'وارد / مرتجع', count: 'جرد (الرصيد الفعلي)' },
   leaveType: { annual: 'اعتيادية', casual: 'عارضة', sick: 'مرضية', unpaid: 'بدون أجر', other: 'أخرى' },
   leaveStatus: { pending: 'قيد المراجعة', approved: 'موافق عليها', rejected: 'مرفوضة' },
   att: { present: 'حاضر', late: 'متأخر', absent: 'غائب', leave: 'إجازة', off: 'راحة' },
@@ -54,8 +55,23 @@ const resources = {
       { name: 'name', label: 'الاسم', required: true, list: true },
       { name: 'name_en', label: 'الوصف بالإنجليزي', list: true },
       { name: 'unit', label: 'الوحدة', list: true },
+      { name: 'min_stock', label: 'أقل رصيد (تنبيه)', type: 'number', list: true, hint: 'لو الرصيد نزل تحته يطلع تنبيه. سيبه فاضي = الحد العام من الإعدادات' },
       { name: 'notes', label: 'ملاحظات', type: 'textarea', list: true },
     ],
+  },
+  product_movements: {
+    title: 'حركات مخزن المنتجات', single: 'حركة منتج', order: 'date DESC, id DESC', newDefaults: () => ({ date: today(), type: 'out' }),
+    fields: [
+      { name: 'date', label: 'التاريخ', type: 'date', required: true, list: true },
+      { name: 'product_id', label: 'المنتج', type: 'ref', ref: 'products', required: true, list: true },
+      { name: 'type', label: 'نوع الحركة', type: 'select', options: opt(STATUS.productMove), required: true, list: true },
+      { name: 'qty', label: 'الكمية', type: 'number', required: true, list: true, hint: 'في الجرد: اكتب الرصيد الفعلي الموجود في المخزن' },
+      { name: 'reference', label: 'رقم المستند / الإذن', list: true },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' },
+    ],
+    validate(row) {
+      if (row.type === 'count' ? Number(row.qty) < 0 : Number(row.qty) <= 0) return 'الكمية لازم تكون أكبر من صفر';
+    },
   },
   molds: {
     title: 'الإسطمبات', single: 'إسطمبة', order: 'code',

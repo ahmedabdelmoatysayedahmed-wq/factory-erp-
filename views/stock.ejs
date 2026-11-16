@@ -1,0 +1,34 @@
+<%- include('partials/header', { title: 'مخزن المنتجات' }) %>
+<% const n = (x) => Number(Number(x || 0).toFixed(1)).toLocaleString('en'); %>
+<div class="head">
+  <h1><%= t('مخزن المنتجات') %> <small>(<%= rows.length %>)</small></h1>
+  <% if (can('product_movements', 'edit')) { %><div class="btns" style="margin:0">
+    <a class="btn" href="/r/product_movements/import">📥 <%= t('استيراد الرصيد من Excel') %></a>
+    <a class="btn" href="/r/product_movements">📋 <%= t('حركات مخزن المنتجات') %></a>
+    <a class="btn primary" href="/r/product_movements/new">+ <%= t('حركة (صرف / وارد / جرد)') %></a></div><% } %>
+</div>
+<form class="filters card" method="get">
+  <input name="q" value="<%= q %>" placeholder="<%= t('بحث...') %>">
+  <select name="only">
+    <option value="" <%= !only ? 'selected' : '' %>><%= t('المنتجات المتابَعة') %></option>
+    <option value="low" <%= only === 'low' ? 'selected' : '' %>><%= t('تحت الحد بس') %> (<%= counts.low %>)</option>
+    <option value="all" <%= only === 'all' ? 'selected' : '' %>><%= t('كل المنتجات') %> (<%= counts.all %>)</option>
+  </select>
+  <button class="btn"><%= t('تصفية') %></button>
+</form>
+<% if (counts.untracked && only !== 'all') { %><p class="muted"><%= t(['{0} منتج لسه مالهمش رصيد في البرنامج، فمش بيتعملهم تنبيه. ابدأ بجرد أو استيراد رصيد المخزن.', counts.untracked]) %></p><% } %>
+<div class="table-wrap card"><table>
+  <thead><tr><th><%= t('رقم القطعة') %></th><th><%= t('المنتج') %></th><th><%= t('الرصيد الحالي') %></th><th><%= t('أقل رصيد (تنبيه)') %></th><th><%= t('الحالة') %></th><th><%= t('إنتاج الشهر') %></th><th><%= t('آخر جرد') %></th></tr></thead>
+  <tbody>
+  <% for (const p of rows) { %>
+    <tr><td data-label="<%= t('رقم القطعة') %>"><%= p.code || '' %></td><td data-label="<%= t('المنتج') %>"><%= p.name %></td>
+    <td data-label="<%= t('الرصيد الحالي') %>" class="<%= p.low ? 'warn' : '' %>"><b><%= p.tracked ? n(p.stock) : '—' %></b> <small><%= p.unit || '' %></small></td>
+    <td data-label="<%= t('أقل رصيد (تنبيه)') %>"><%= n(p.min) %></td>
+    <td data-label="<%= t('الحالة') %>"><% if (!p.tracked) { %><span class="tag"><%= t('مش متابَع') %></span><% } else if (p.low) { %><span class="tag t-absent"><%= t('محتاج إنتاج') %></span><% } else { %><span class="tag t-present"><%= t('كويس') %></span><% } %></td>
+    <td data-label="<%= t('إنتاج الشهر') %>"><%= n(p.month) %></td><td data-label="<%= t('آخر جرد') %>"><%= p.countDate || '—' %></td></tr>
+  <% } %>
+  <% if (!rows.length) { %><tr><td colspan="7" class="empty"><%= t('لا توجد بيانات') %></td></tr><% } %>
+  </tbody>
+</table></div>
+<p class="muted"><%= t('الرصيد = آخر جرد + الإنتاج السليم بعده + الوارد − المنصرف. الجرد بيتحسب رصيد نهاية يومه.') %></p>
+<%- include('partials/footer') %>

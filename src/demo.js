@@ -5,7 +5,7 @@ const MOLDS = require('./demo-molds');
 const OLD_FAKE_MOLDS = ['إسطمبة غطاء 38', 'إسطمبة جركن 5L', 'إسطمبة برطمان', 'إسطمبة غطاء 28 (احتياطي)'];
 // أسامي الموظفين الوهميين اللي كانت في النسخ القديمة من البيانات التجريبية
 const OLD_FAKE = ['محمد علي', 'أحمد حسن', 'محمود سيد', 'كريم سمير', 'مصطفى عادل', 'عمرو خالد', 'إسلام فتحي', 'هاني رمضان', 'سامح نبيل', 'ياسر جمال'];
-const TABLES = ['upcoming_molds', 'production_logs', 'stock_movements', 'attendance', 'leaves', 'production_orders', 'molds', 'assets', 'materials', 'products', 'machines'];
+const TABLES = ['production_plans', 'product_movements', 'upcoming_molds', 'production_logs', 'stock_movements', 'attendance', 'leaves', 'production_orders', 'molds', 'assets', 'materials', 'products', 'machines'];
 
 // مسح البيانات (المستخدمين والإعدادات مابيتمسحوش)
 // keepMolds: بيسيب الإسطمبات ومنتجاتها والإسطمبات القادمة (بيشيل بس عداد الإنتاج التجريبي منها)
@@ -77,22 +77,35 @@ function seedDemo(db, { keepEmployees = false, resetEmployees = false } = {}) {
           downtime_reason: down > 30 ? ['تغيير لون', 'انتظار مواد', 'عطل بسيط'][Math.floor(rnd() * 3)] : null });
       });
     }
+    // مخزن المنتجات: جرد من أسبوعين لأول 15 منتج + صرف للعملاء، و3 منهم رصيدهم تحت الحد
+    const { periodOf } = require('./stock');
+    allProducts.slice(0, 15).forEach((pid, i) => {
+      ins('product_movements', { date: day(14), product_id: pid, type: 'count', qty: [400, 900, 650, 60, 300, 85, 1200, 150, 500, 40, 700, 220, 95, 380, 610][i], reference: 'جرد افتتاحي' });
+      if (USED.includes(i)) ins('product_movements', { date: day(2), product_id: pid, type: 'out', qty: 5000 + i * 500, reference: 'إذن صرف عميل' });
+    });
+    // خطة الشهر والأسبوع للمنتجات الشغالة
+    const m = periodOf('month', day(0)).start, w = periodOf('week', day(0)).start;
+    prod.forEach((pid, i) => {
+      ins('production_plans', { period_type: 'month', period_start: m, product_id: pid, qty_planned: [16000, 10000, 9000][i] });
+      ins('production_plans', { period_type: 'week', period_start: w, product_id: pid, qty_planned: [3500, 2500, 2200][i] });
+    });
     [['شاحنة نقل ربع نقل', 'سيارات', 450000], ['ونش شوكة (كلارك)', 'معدات مناولة', 380000], ['كمبيوتر المخزن', 'أجهزة', 18000], ['كمبريسور هواء', 'معدات', 95000], ['ميزان إلكتروني 300 كجم', 'أجهزة قياس', 12000]]
       .forEach(([name, category, cost], i) => ins('assets', { code: 'A' + (i + 1), name, category, purchase_cost: cost, purchase_date: '2023-0' + (i + 2) + '-15', custodian_id: emps[i % emps.length].id, location: i === 0 ? 'الجراج' : 'المصنع', status: 'in_service' }));
     count = emps.length;
+    for (const f of MIGRATION_FLAGS) db.setSetting(f, '1');
   })();
   return count;
 }
 
-// قاعدة بيانات من نسخة قديمة محتاجة تصحيح؟
-// (الإسطمبات القادمة فيها إسطمبات المصنع، أو الـ 101 في الإسطمبات ومفيش قادمة خالص)
+// قاعدة بيانات من نسخة قديمة محتاجة تصحيح؟ (الإسطمبات القادمة فيها إسطمبات المصنع)
+// ملحوظة: الـ 101 في الإسطمبات والقادمة فاضية = الوضع الصح، مش محتاج تصحيح
 function needsUpcomingFix(db) {
   const codes = new Set(MOLDS.map((m) => m.code));
   const up = db.prepare('SELECT code FROM upcoming_molds').all();
-  if (up.length) return up.every((r) => codes.has(r.code));
-  const rows = db.prepare('SELECT code FROM molds').all();
-  return rows.length === MOLDS.length && rows.every((r) => codes.has(r.code));
+  return up.length > 0 && up.every((r) => codes.has(r.code));
 }
+// علامات التحديثات اللي اتعملت مرة واحدة - البيانات التجريبية الجديدة مش محتاجاها
+const MIGRATION_FLAGS = ['roster_v1', 'molds_v1', 'upcoming_v1', 'upcoming_v2', 'upcoming_v3'];
 
 // هل الإسطمبات الموجودة هي بس الإسطمبات الوهمية القديمة؟
 function hasOnlyOldFakeMolds(db) {

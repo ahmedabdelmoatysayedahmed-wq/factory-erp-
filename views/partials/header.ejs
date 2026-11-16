@@ -10,9 +10,9 @@
 <% if (user) {
   const groups = [
     ['الرئيسية', [['/', 'لوحة التحكم', 'dashboard'], ['/reports', 'تقارير الإنتاجية', 'reports']]],
-    ['الإنتاج', [['/r/production_logs', 'الإنتاج اليومي', 'production_logs'], ['/r/production_orders', 'أوامر التشغيل', 'production_orders'], ['/r/products', 'المنتجات', 'products']]],
+    ['الإنتاج', [['/plan', 'خطة الإنتاج', 'production_plans'], ['/r/production_logs', 'الإنتاج اليومي', 'production_logs'], ['/r/production_orders', 'أوامر التشغيل', 'production_orders'], ['/r/products', 'المنتجات', 'products']]],
     ['المعدات', [['/r/machines', 'الماكينات', 'machines'], ['/r/molds', 'الإسطمبات', 'molds'], ['/r/upcoming_molds', 'الإسطمبات القادمة', 'upcoming_molds', 'sub'], ['/r/assets', 'الأصول', 'assets']]],
-    ['المخزن', [['/r/materials', 'المواد الخام', 'materials'], ['/r/stock_movements', 'حركات المخزن', 'stock_movements']]],
+    ['المخزن', [['/stock', 'مخزن المنتجات', 'product_stock'], ['/r/materials', 'المواد الخام', 'materials'], ['/r/stock_movements', 'حركات المخزن', 'stock_movements']]],
     ['الموظفين', [['/r/employees', 'الموظفين', 'employees'], ['/attendance', 'الحضور والانصراف', 'attendance'], ['/r/leaves', 'الإجازات', 'leaves']]],
     ['النظام', [['/users', 'المستخدمين والصلاحيات', 'users'], ['/settings', 'الإعدادات', 'users']]],
   ];
@@ -21,6 +21,7 @@
   <button class="menu-btn" onclick="document.body.classList.toggle('nav-open')" aria-label="<%= t('القائمة') %>">☰</button>
   <a href="/" class="brand">🏭 <%= t('إدارة المصنع') %></a>
   <div class="who">
+    <% if (can('alerts')) { %><a href="/alerts" class="bell <%= alertsCount ? 'on' : '' %>" title="<%= t('التنبيهات') %>">🔔<% if (alertsCount) { %><b id="bell-n"><%= alertsCount %></b><% } %></a><% } %>
     <a href="<%= langLink[0] %>" class="lang-btn"><%= langLink[1] %></a>
     <span><%= user.full_name || user.username %> <small>(<%= t(ROLES[user.role]) %>)</small></span>
     <a href="/password" class="hide-sm"><%= t('كلمة المرور') %></a>

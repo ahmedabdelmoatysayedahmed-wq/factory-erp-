@@ -1,0 +1,45 @@
+<%- include('partials/header', { title: 'التنبيهات' }) %>
+<% const n = (x) => Number(Number(x || 0).toFixed(1)).toLocaleString('en'); %>
+<div class="head">
+  <h1>🔔 <%= t('التنبيهات') %> <small>(<%= a.count %>)</small></h1>
+  <button class="btn" id="notif" type="button" hidden>🔔 <%= t('شغّل الإشعارات على الجهاز ده') %></button>
+</div>
+<p class="muted" id="notif-msg"></p>
+
+<section class="card">
+  <h2>🏭 <%= t('منتجات محتاجة إنتاج (الرصيد تحت الحد)') %></h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th><%= t('المنتج') %></th><th><%= t('الرصيد الحالي') %></th><th><%= t('أقل رصيد (تنبيه)') %></th><th><%= t('الناقص') %></th></tr></thead>
+    <tbody>
+    <% for (const p of a.products) { %><tr><td><%= p.name %> <small class="muted"><%= p.code || '' %></small></td><td class="warn"><b><%= n(p.stock) %></b></td><td><%= n(p.min) %></td><td><%= n(p.min - p.stock) %></td></tr><% } %>
+    <% if (!a.products.length) { %><tr><td colspan="4" class="empty"><%= t('كل المنتجات رصيدها فوق الحد ✅') %></td></tr><% } %>
+    </tbody>
+  </table></div>
+  <% if (a.products.length && can('production_plans')) { %><p><a class="btn primary" href="/plan?type=week"><%= t('أضفهم لخطة الأسبوع') %> ←</a></p><% } %>
+</section>
+
+<section class="card">
+  <h2>⚠️ <%= t('مواد خام وصلت لحد الطلب') %></h2>
+  <table><thead><tr><th><%= t('المادة') %></th><th><%= t('الرصيد') %></th><th><%= t('حد الطلب') %></th></tr></thead><tbody>
+  <% for (const m of a.materials) { %><tr><td><%= m.name %></td><td class="warn"><%= n(m.stock) %> <%= m.unit || '' %></td><td><%= n(m.min_stock) %></td></tr><% } %>
+  <% if (!a.materials.length) { %><tr><td colspan="3" class="empty"><%= t('كل المواد فوق حد الطلب') %> ✅</td></tr><% } %>
+  </tbody></table>
+</section>
+
+<section class="card">
+  <h2>🔧 <%= t('إسطمبات تحتاج صيانة') %></h2>
+  <table><thead><tr><th><%= t('الإسطمبة') %></th><th><%= t('ضربات منذ الصيانة') %></th></tr></thead><tbody>
+  <% for (const m of a.molds) { %><tr><td><%= m.code %> <%= m.name %></td><td class="warn"><%= Math.round(m.since).toLocaleString('en') %> <%= t('من أصل') %> <%= m.maintenance_every.toLocaleString('en') %></td></tr><% } %>
+  <% if (!a.molds.length) { %><tr><td colspan="2" class="empty"><%= t('لا توجد تنبيهات') %> ✅</td></tr><% } %>
+  </tbody></table>
+</section>
+<script>
+(function () {
+  var b = document.getElementById('notif'), m = document.getElementById('notif-msg');
+  if (!('Notification' in window) || !window.isSecureContext) { m.textContent = <%- JSON.stringify(t('إشعارات الجهاز بتشتغل على كمبيوتر المصنع نفسه (localhost). على الموبايل التنبيهات بتظهر في الجرس فوق.')) %>; return; }
+  if (Notification.permission === 'granted') { m.textContent = <%- JSON.stringify(t('الإشعارات شغالة على الجهاز ده ✅')) %>; return; }
+  b.hidden = false;
+  b.onclick = function () { Notification.requestPermission().then(function () { location.reload(); }); };
+})();
+</script>
+<%- include('partials/footer') %>

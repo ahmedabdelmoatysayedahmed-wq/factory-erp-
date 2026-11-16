@@ -7,6 +7,7 @@ const SqliteStore = require('./session-store');
 const { ROLES, PERMS, can } = require('./roles');
 const { resources, STATUS, today } = require('./resources');
 const { LANGS, translator } = require('./i18n');
+const { productStock, getAlerts, clearAlertsCache, periodOf, shiftPeriod } = require('./stock');
 
 const app = express();
 const prod = process.env.NODE_ENV === 'production';
@@ -73,6 +74,13 @@ app.use((req, res, next) => (req.session.user ? next() : res.redirect('/login'))
 // الصلاحية + إن القسم نفسه مفعّل (قسم الإجازات ممكن يتقفل من الإعدادات)
 const allowed = (req, section, action) =>
   (section !== 'leaves' || req.settings.leavesEnabled) && can(req.session.user, section, action);
+// أي تعديل بيمسح كاش التنبيهات، وكل صفحة بتعرض عدد التنبيهات في الجرس
+app.use((req, res, next) => {
+  if (req.method === 'POST') clearAlertsCache();
+  res.locals.alertsCount = req.session.user && can(req.session.user, 'alerts') ? getAlerts(db).count : 0;
+  next();
+});
+
 const need = (section, action = 'view') => (req, res, next) =>
   allowed(req, section, action) ? next() : res.status(403).render('error', { msg: 'ليس لديك صلاحية لهذه الصفحة' });
 
@@ -104,7 +112,7 @@ app.get('/', (req, res) => {
   const moldAlerts = all(`SELECT * FROM (SELECT t.*, COALESCE((SELECT CAST(SUM(qty_produced+qty_scrap) AS REAL)/MAX(t.cavities,1)
     FROM production_logs l WHERE l.mold_id=t.id AND (t.last_maintenance IS NULL OR l.date > t.last_maintenance)),0) since
     FROM molds t WHERE t.maintenance_every > 0) WHERE since >= maintenance_every * 0.9 OR status IN ('maintenance','damaged')`);
-  res.render('dashboard', { d, offDay, products, stats, machines, lowStock, orders, moldAlerts, STATUS });
+  res.render('dashboard', { d, offDay, products, lowProducts: getAlerts(db).products, stats, machines, lowStock, orders, moldAlerts, STATUS });
 });
 
 // ---------- الحضور والانصراف (شاشة يومية مجمعة) ----------
@@ -204,6 +212,7 @@ app.post('/settings', need('users', 'edit'), (req, res) => {
   const off = [].concat(req.body.weekly_off || []).map(Number).filter((n) => n >= 0 && n <= 6);
   db.setSetting('weekly_off', off.join(','));
   db.setSetting('leaves_enabled', req.body.leaves_enabled ? '1' : '0');
+  if (req.body.product_min_stock !== undefined && Number(req.body.product_min_stock) >= 0) db.setSetting('product_min_stock', Number(req.body.product_min_stock));
   flash(req, 'ok', 'تم الحفظ');
   res.redirect('/settings');
 });
@@ -219,6 +228,80 @@ app.post('/password', (req, res) => {
 });
 
 // ---------- شاشات عامة لكل الأقسام (إضافة / تعديل / حذف / بحث) ----------
+// ---------- مخزن المنتجات ----------
+app.get('/stock', need('product_stock'), (req, res) => {
+  const q = (req.query.q || '').trim().toLowerCase();
+  const only = req.query.only || '';
+  const { start, end } = periodOf('month', today());
+  const prodMonth = Object.fromEntries(db.prepare('SELECT product_id, SUM(qty_produced) s FROM production_logs WHERE date BETWEEN ? AND ? GROUP BY product_id')
+    .all(start, end).map((r) => [r.product_id, r.s]));
+  let rows = productStock(db).map((p) => ({ ...p, month: prodMonth[p.id] || 0 }));
+  const counts = { all: rows.length, low: rows.filter((p) => p.low).length, untracked: rows.filter((p) => !p.tracked).length };
+  if (q) rows = rows.filter((p) => `${p.code} ${p.name}`.toLowerCase().includes(q));
+  if (only === 'low') rows = rows.filter((p) => p.low);
+  else if (only !== 'all') rows = rows.filter((p) => p.tracked); // الافتراضي: المنتجات المتابَعة بس
+  rows.sort((a, b) => (b.low - a.low) || (a.stock / (a.min || 1)) - (b.stock / (b.min || 1)));
+  res.render('stock', { rows, counts, q: req.query.q || '', only, def: db.getSetting('product_min_stock') });
+});
+
+// ---------- خطة الإنتاج (شهري / أسبوعي) ----------
+const planPeriod = (req) => {
+  const type = req.query.type === 'week' || req.body?.type === 'week' ? 'week' : 'month';
+  return { type, ...periodOf(type, (req.query.date || req.body?.date || today()).slice(0, 10)) };
+};
+app.get('/plan', need('production_plans'), (req, res) => {
+  const per = planPeriod(req);
+  const stock = Object.fromEntries(productStock(db).map((p) => [p.id, p]));
+  const lines = db.prepare(`SELECT pl.*, p.code, p.name, p.unit,
+      COALESCE((SELECT SUM(qty_produced) FROM production_logs l WHERE l.product_id=pl.product_id AND l.date BETWEEN ? AND ?),0) produced
+    FROM production_plans pl JOIN products p ON p.id=pl.product_id WHERE pl.period_type=? AND pl.period_start=? ORDER BY p.name`)
+    .all(per.start, per.end, per.type, per.start).map((l) => ({ ...l, st: stock[l.product_id] }));
+  // منتجات تحت الحد ومش في الخطة => اقتراح كمية تكمّل الرصيد لضعف الحد الأدنى
+  const inPlan = new Set(lines.map((l) => l.product_id));
+  const suggest = Object.values(stock).filter((p) => p.low && !inPlan.has(p.id))
+    .map((p) => ({ ...p, qty: Math.ceil((p.min * 2 - p.stock) / 50) * 50 }));
+  const products = db.prepare("SELECT id, COALESCE(code || ' - ', '') || name label FROM products ORDER BY name").all();
+  res.render('plan', { per, lines, suggest, products, prev: shiftPeriod(per.type, per.start, -1), next: shiftPeriod(per.type, per.start, 1) });
+});
+app.post('/plan', need('production_plans', 'edit'), (req, res) => {
+  const per = planPeriod(req);
+  const back = `/plan?type=${per.type}&date=${per.start}`;
+  const ids = [].concat(req.body.product_id || []), qtys = [].concat(req.body.qty || []);
+  let n = 0;
+  db.transaction(() => {
+    ids.forEach((pid, i) => {
+      const q = Number(qtys[i]);
+      if (!pid || !(q > 0)) return;
+      db.prepare(`INSERT INTO production_plans (period_type, period_start, product_id, qty_planned, notes) VALUES (?,?,?,?,?)
+        ON CONFLICT(period_type, period_start, product_id) DO UPDATE SET qty_planned=excluded.qty_planned, notes=COALESCE(excluded.notes, notes)`)
+        .run(per.type, per.start, Number(pid), q, req.body.notes || null);
+      n++;
+    });
+  })();
+  flash(req, n ? 'ok' : 'err', n ? 'تم الحفظ' : 'اختار المنتج واكتب كمية أكبر من صفر');
+  res.redirect(back);
+});
+app.post('/plan/copy', need('production_plans', 'edit'), (req, res) => {
+  const per = planPeriod(req);
+  const prev = shiftPeriod(per.type, per.start, -1);
+  const n = db.prepare(`INSERT OR IGNORE INTO production_plans (period_type, period_start, product_id, qty_planned, notes)
+    SELECT period_type, ?, product_id, qty_planned, notes FROM production_plans WHERE period_type=? AND period_start=?`).run(per.start, per.type, prev.start).changes;
+  flash(req, 'ok', ['تم نسخ {0} منتج من الفترة اللي فاتت', n]);
+  res.redirect(`/plan?type=${per.type}&date=${per.start}`);
+});
+app.post('/plan/:id/delete', need('production_plans', 'edit'), (req, res) => {
+  const l = db.prepare('SELECT * FROM production_plans WHERE id=?').get(req.params.id);
+  db.prepare('DELETE FROM production_plans WHERE id=?').run(req.params.id);
+  res.redirect(l ? `/plan?type=${l.period_type}&date=${l.period_start}` : '/plan');
+});
+
+// ---------- التنبيهات ----------
+app.get('/alerts', need('alerts'), (req, res) => res.render('alerts', { a: getAlerts(db, { fresh: true }) }));
+app.get('/api/alerts', need('alerts'), (req, res) => {
+  const a = getAlerts(db);
+  res.json({ count: a.count, products: a.products.slice(0, 5).map((p) => p.name) });
+});
+
 // مسح قائمة الإسطمبات القادمة كلها (لازم قبل الراوت العام /r/:res/:id)
 app.post('/r/upcoming_molds/clear', need('upcoming_molds', 'edit'), (req, res) => {
   const n = db.prepare('DELETE FROM upcoming_molds').run().changes;
@@ -348,7 +431,7 @@ app.post(['/r/:res', '/r/:res/:id'], getRes, needRes('edit'), (req, res) => {
     try {
       if (id) db.prepare(`UPDATE ${req.rk} SET ${cols.map((c) => `${c}=?`).join(',')} WHERE id=?`).run(...cols.map((c) => row[c]), id);
       else {
-        const all = ['stock_movements', 'production_logs'].includes(req.rk) ? [...cols, 'user_id'] : cols;
+        const all = ['stock_movements', 'production_logs', 'product_movements'].includes(req.rk) ? [...cols, 'user_id'] : cols;
         const vals = cols.map((c) => row[c]); if (all.length > cols.length) vals.push(req.session.user.id);
         db.prepare(`INSERT INTO ${req.rk} (${all.join(',')}) VALUES (${all.map(() => '?').join(',')})`).run(...vals);
       }

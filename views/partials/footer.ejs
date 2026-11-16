@@ -1,3 +1,21 @@
 </main>
 <% if (user) { %></div><% } %>
+<% if (user && can('alerts')) { %>
+<script>
+// every 5 minutes: show a device notification when the number of alerts goes up
+(function () {
+  var key = 'erp-alerts-seen';
+  function check() {
+    fetch('/api/alerts').then(function (r) { return r.json(); }).then(function (j) {
+      var seen = 0; try { seen = Number(localStorage.getItem(key) || 0); } catch (e) {}
+      if (j.count > seen && window.Notification && Notification.permission === 'granted') {
+        new Notification(<%- JSON.stringify(t('تنبيه من إدارة المصنع')) %>, { body: (j.products.length ? <%- JSON.stringify(t('محتاجين إنتاج: ')) %> + j.products.join(' / ') : j.count + ' ' + <%- JSON.stringify(t('تنبيه')) %>) });
+      }
+      try { localStorage.setItem(key, j.count); } catch (e) {}
+    }).catch(function () {});
+  }
+  check(); setInterval(check, 5 * 60 * 1000);
+})();
+</script>
+<% } %>
 </body></html>

@@ -14,7 +14,7 @@
 </div>
 <script>
 var URL_ = '/r/<%= rk %>/import';
-var T = <%- JSON.stringify({ rows: t('صف في الملف - راجعهم ودوس استيراد'), done: t('تم: {0} جديد، و{1} اتحدثت بياناتهم'), skipped: t('و{0} موجودين في الإسطمبات خلاص فماتضافوش'), go: t('رجوع للقائمة'),
+var T = <%- JSON.stringify({ rows: t('صف في الملف - راجعهم ودوس استيراد'), done: t('تم: {0} جديد، و{1} اتحدثت بياناتهم'), skipped: t(rk === 'product_movements' ? 'و{0} رقم قطعة مش موجود في المنتجات فماتضافوش' : 'و{0} موجودين في الإسطمبات خلاص فماتضافوش'), go: t('رجوع للقائمة'),
   keys: imp.preview.map(function (c) { return c[0]; }), h: imp.preview.map(function (c) { return t(c[1]); }) }).replace(/</g, '\\u003c') %>;
 var file = document.getElementById('file'), go = document.getElementById('go'), msg = document.getElementById('msg'), pv = document.getElementById('preview');
 function esc(s) { return String(s == null ? '—' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }

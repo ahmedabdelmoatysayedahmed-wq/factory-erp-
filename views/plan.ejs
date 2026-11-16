@@ -1,0 +1,68 @@
+<%- include('partials/header', { title: 'خطة الإنتاج' }) %>
+<% const n = (x) => Number(Number(x || 0).toFixed(1)).toLocaleString('en'); const edit = can('production_plans', 'edit');
+   const link = (type, date) => `/plan?type=${type}&date=${date}`; %>
+<div class="head">
+  <h1><%= t('خطة الإنتاج') %></h1>
+  <div class="btns" style="margin:0">
+    <a class="btn <%= per.type === 'month' ? 'primary' : '' %>" href="<%= link('month', per.start) %>"><%= t('شهري') %></a>
+    <a class="btn <%= per.type === 'week' ? 'primary' : '' %>" href="<%= link('week', per.start) %>"><%= t('أسبوعي') %></a>
+  </div>
+</div>
+<div class="card filters">
+  <a class="btn" href="<%= link(per.type, prev.start) %>">→ <%= t('اللي فات') %></a>
+  <b><%= per.type === 'month' ? per.start.slice(0, 7) : per.start + ' ← ' + per.end %></b>
+  <a class="btn" href="<%= link(per.type, next.start) %>"><%= t('اللي جاي') %> ←</a>
+  <form method="get" class="inline"><input type="hidden" name="type" value="<%= per.type %>"><input type="date" name="date" value="<%= per.start %>" onchange="this.form.submit()"></form>
+  <% if (edit && !lines.length) { %><form method="post" action="/plan/copy" class="inline"><input type="hidden" name="type" value="<%= per.type %>"><input type="hidden" name="date" value="<%= per.start %>"><button class="btn">📋 <%= t('انسخ خطة الفترة اللي فاتت') %></button></form><% } %>
+</div>
+
+<div class="table-wrap card"><table>
+  <thead><tr><% if (edit) { %><th></th><% } %><th><%= t('المنتج') %></th><th><%= t('المخطط') %></th><th><%= t('اتنتج') %></th><th><%= t('الباقي') %></th><th><%= t('الإنجاز') %></th><th><%= t('الرصيد الحالي') %></th></tr></thead>
+  <tbody>
+  <% let tp = 0, ta = 0; for (const l of lines) { tp += l.qty_planned; ta += Math.min(l.produced, l.qty_planned); const pc = l.qty_planned ? l.produced * 100 / l.qty_planned : 0; %>
+    <tr>
+      <% if (edit) { %><td class="actions"><form method="post" action="/plan/<%= l.id %>/delete" class="inline" onsubmit="return confirm('<%= t('متأكد من الحذف؟') %>')"><button class="link danger"><%= t('حذف') %></button></form></td><% } %>
+      <td data-label="<%= t('المنتج') %>"><%= l.name %> <small class="muted"><%= l.code || '' %></small></td>
+      <td data-label="<%= t('المخطط') %>"><% if (edit) { %><form method="post" action="/plan" class="inline"><input type="hidden" name="type" value="<%= per.type %>"><input type="hidden" name="date" value="<%= per.start %>"><input type="hidden" name="product_id" value="<%= l.product_id %>"><input name="qty" type="number" min="1" value="<%= l.qty_planned %>" style="width:100px" onchange="this.form.submit()"></form><% } else { %><%= n(l.qty_planned) %><% } %></td>
+      <td data-label="<%= t('اتنتج') %>"><b><%= n(l.produced) %></b></td>
+      <td data-label="<%= t('الباقي') %>"><%= n(Math.max(0, l.qty_planned - l.produced)) %></td>
+      <td data-label="<%= t('الإنجاز') %>"><div class="bar <%= pc < 50 ? 'low' : '' %>"><span style="width:<%= Math.min(100, pc) %>%"></span><em><%= pc.toFixed(0) %>%</em></div></td>
+      <td data-label="<%= t('الرصيد الحالي') %>" class="<%= l.st && l.st.low ? 'warn' : '' %>"><%= l.st && l.st.tracked ? n(l.st.stock) : '—' %></td>
+    </tr>
+  <% } %>
+  <% if (!lines.length) { %><tr><td colspan="7" class="empty"><%= t('مفيش خطة للفترة دي لسه') %></td></tr><% } else { %>
+    <tr class="total"><% if (edit) { %><td></td><% } %><td><b><%= t('الإجمالي') %></b></td><td><b><%= n(tp) %></b></td><td></td><td></td><td><b><%= tp ? (ta * 100 / tp).toFixed(0) : 0 %>%</b></td><td></td></tr><% } %>
+  </tbody>
+</table></div>
+
+<% if (edit) { %>
+<form method="post" action="/plan" class="card form">
+  <h2><%= t('إضافة منتج للخطة') %></h2>
+  <input type="hidden" name="type" value="<%= per.type %>"><input type="hidden" name="date" value="<%= per.start %>">
+  <div class="grid">
+    <label><span><%= t('المنتج') %></span><select name="product_id" required><option value=""><%= t('— اختر —') %></option>
+      <% for (const p of products) { %><option value="<%= p.id %>"><%= p.label %></option><% } %></select></label>
+    <label><span><%= t('الكمية المطلوبة') %></span><input name="qty" type="number" min="1" required></label>
+  </div>
+  <div class="btns"><button class="btn primary"><%= t('إضافة') %></button></div>
+</form>
+
+<% if (suggest.length) { %>
+<form method="post" action="/plan" class="card">
+  <h2>⚠️ <%= t('منتجات رصيدها تحت الحد ومش في الخطة') %></h2>
+  <p class="muted"><%= t('الكمية المقترحة بتكمّل الرصيد لضعف الحد الأدنى. عدّلها لو محتاج، وعلّم على اللي عاوز تضيفه.') %></p>
+  <input type="hidden" name="type" value="<%= per.type %>"><input type="hidden" name="date" value="<%= per.start %>">
+  <div class="table-wrap"><table>
+    <thead><tr><th></th><th><%= t('المنتج') %></th><th><%= t('الرصيد الحالي') %></th><th><%= t('أقل رصيد (تنبيه)') %></th><th><%= t('الكمية المقترحة') %></th></tr></thead>
+    <tbody><% suggest.forEach((p, i) => { %>
+      <tr><td><input type="checkbox" checked onchange="this.closest('tr').querySelectorAll('input[name]').forEach(function (x) { x.disabled = !this.checked }, this)"></td>
+      <td><%= p.name %> <small class="muted"><%= p.code || '' %></small><input type="hidden" name="product_id" value="<%= p.id %>"></td>
+      <td class="warn"><%= n(p.stock) %></td><td><%= n(p.min) %></td>
+      <td><input name="qty" type="number" min="1" value="<%= p.qty %>" style="width:100px"></td></tr>
+    <% }) %></tbody>
+  </table></div>
+  <div class="btns"><button class="btn primary"><%= t('أضف المختار للخطة') %></button></div>
+</form>
+<% } %>
+<% } %>
+<%- include('partials/footer') %>

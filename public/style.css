@@ -89,6 +89,7 @@ tr.total td{border-top:2px solid var(--line);background:#fafbfc}
   .table-wrap table:not(.perm) td[data-label]::before{content:attr(data-label);color:var(--muted);font-size:13px}
 }
 @media print{.top,.side,.filters,.btn{display:none!important}main{padding:0}.card{border:0}}
+.bell{position:relative;font-size:18px;text-decoration:none}.bell b{position:absolute;top:-8px;inset-inline-end:-12px;background:#e03131;color:#fff;border-radius:10px;font-size:11px;padding:1px 6px;font-weight:700}
 .lang-btn{border:1px solid #ffffff55;border-radius:6px;padding:2px 10px}
 .lang-float{position:fixed;top:14px;inset-inline-end:16px}
 [dir=ltr] body,[dir=ltr]{font-family:"Segoe UI",Roboto,Arial,sans-serif}

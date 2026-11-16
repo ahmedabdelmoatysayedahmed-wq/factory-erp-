@@ -64,6 +64,13 @@ CREATE TABLE IF NOT EXISTS upcoming_molds (
   id INTEGER PRIMARY KEY, code TEXT UNIQUE, name TEXT NOT NULL, name_en TEXT, producer TEXT, agent TEXT,
   status TEXT DEFAULT 'manufacturing', cavities INTEGER, order_date TEXT, expected_date TEXT,
   price REAL, currency TEXT, notes TEXT);
+CREATE TABLE IF NOT EXISTS product_movements (
+  id INTEGER PRIMARY KEY, date TEXT NOT NULL, product_id INTEGER NOT NULL REFERENCES products(id),
+  type TEXT NOT NULL, qty REAL NOT NULL, reference TEXT, notes TEXT, user_id INTEGER);
+CREATE TABLE IF NOT EXISTS production_plans (
+  id INTEGER PRIMARY KEY, period_type TEXT NOT NULL, period_start TEXT NOT NULL,
+  product_id INTEGER NOT NULL REFERENCES products(id), qty_planned REAL NOT NULL, notes TEXT,
+  UNIQUE(period_type, period_start, product_id));
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS leaves (
   id INTEGER PRIMARY KEY, employee_id INTEGER NOT NULL REFERENCES employees(id), type TEXT NOT NULL,
@@ -85,10 +92,11 @@ addColumn('molds', 'name_en', 'TEXT');
 addColumn('products', 'name_en', 'TEXT');
 addColumn('molds', 'producer', 'TEXT');
 addColumn('molds', 'agent', 'TEXT');
+addColumn('products', 'min_stock', 'REAL');
 for (const c of ['part_no', 'oem_no', 'material', 'steel', 'runner', 't0_date']) addColumn('upcoming_molds', c, 'TEXT');
 
 // الإعدادات الافتراضية: الجمعة راحة أسبوعية، وقسم الإجازات مقفول
-const defaults = { weekly_off: '5', leaves_enabled: '0' };
+const defaults = { weekly_off: '5', leaves_enabled: '0', product_min_stock: '100' };
 for (const [k, v] of Object.entries(defaults)) db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run(k, v);
 
 db.getSettings = () => {
@@ -96,6 +104,7 @@ db.getSettings = () => {
   return {
     weeklyOff: (s.weekly_off || '').split(',').filter(Boolean).map(Number), // 0 = الأحد ... 5 = الجمعة، 6 = السبت
     leavesEnabled: s.leaves_enabled === '1',
+    productMinStock: Number(s.product_min_stock ?? 100),
   };
 };
 db.getSetting = (k) => (db.prepare('SELECT value FROM settings WHERE key=?').get(k) || {}).value;
