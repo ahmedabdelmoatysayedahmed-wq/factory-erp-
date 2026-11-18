@@ -351,26 +351,9 @@ app.post('/bom/:id/line/:line/delete', need('bom', 'edit'), (req, res) => {
 });
 // ---------- كارت Pre-BOM ----------
 const uploadsDir = () => { const d = require('path').join(db.dataDir, 'uploads'); fs.mkdirSync(d, { recursive: true }); return d; };
-function getCard(p) {
-  const r = db.prepare('SELECT data FROM pre_bom WHERE product_id=?').get(p.id);
-  const d = PB.normalize(r ? JSON.parse(r.data) : null);
-  if (!r) { d.fpi_no = p.code || ''; d.product_name = p.name_en || p.name; }
-  return d;
-}
-function saveCard(req, pid, d) {
-  db.prepare(`INSERT INTO pre_bom (product_id, data, updated_at, updated_by) VALUES (?,?,datetime('now'),?)
-    ON CONFLICT(product_id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at, updated_by=excluded.updated_by`)
-    .run(pid, JSON.stringify(d), req.session.user.id);
-}
-// الخامات اللي في الـ BOM من الكارت: بتمسح سطور الكارت القديمة وتحط الجديدة
-function generateFromCard(pid, d) {
-  const lines = PB.bomFromCard(d);
-  db.transaction(() => {
-    db.prepare('DELETE FROM bom_lines WHERE product_id=?').run(pid);
-    for (const l of lines) db.prepare('INSERT INTO bom_lines (product_id, material_id, qty, scrap_pct, notes) VALUES (?,?,?,?,?)').run(pid, l.material_id, l.qty, l.scrap_pct, 'من كارت Pre-BOM');
-  })();
-  return lines.length;
-}
+const getCard = (p) => PB.getCard(db, p);
+const saveCard = (req, pid, d) => PB.saveCard(db, pid, d, req.session.user.id);
+const generateFromCard = (pid, d) => PB.generateFromCard(db, pid, d);
 const clip = (v) => (v === undefined || v === null ? '' : String(v).replace(/\s+/g, ' ').trim().slice(0, 300));
 app.post('/bom/:id/card', need('bom', 'edit'), (req, res) => {
   const p = db.prepare('SELECT * FROM products WHERE id=?').get(req.params.id);

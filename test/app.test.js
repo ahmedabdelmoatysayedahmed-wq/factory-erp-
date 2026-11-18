@@ -409,3 +409,31 @@ test('Pre-BOM card: import sheet, save, photo, calculate BOM, copy, print layout
   assert.equal(view.status, 200); assert.doesNotMatch(view.text, /class="pb-in/);
   assert.equal((await s('POST', `/bom/${pid('PRE-1')}/card`, { 'f[car_name]': 'X' })).status, 403);
 });
+
+test('Pre-BOM cards sheet: one row per mold imports into each product card', async () => {
+  const db = require('../src/db');
+  const req = client();
+  await req('POST', '/login', { username: 'admin', password: 'admin123' });
+  assert.equal((await req('GET', '/templates/prebom-cards-template.xlsx')).status, 200);
+  assert.match((await req('GET', '/bom')).text, /prebom-cards-template\.xlsx/);
+  // الشيت الفاضي (أرقام القطع بس) => مفيش بيانات تتستورد
+  const tpl = fs.readFileSync(path.join(__dirname, '..', 'public', 'templates', 'prebom-cards-template.xlsx'));
+  assert.equal(JSON.parse((await req('POST', '/r/bom_cards/import', null, tpl)).text).ok, false);
+  // شيت فيه صف واحد متملي + رقم قطعة مش موجود => كارت واحد، والباقي بيتجاهل
+  const fx = fs.readFileSync(path.join(__dirname, 'fixtures', 'prebom-cards-filled.xlsx'));
+  assert.equal(JSON.parse((await req('POST', '/r/bom_cards/import?preview=1', null, fx)).text).rows.length, 2);
+  const r = JSON.parse((await req('POST', '/r/bom_cards/import', null, fx)).text);
+  assert.deepEqual(r, { ok: true, added: 1, updated: 0, skipped: 1 });
+  const pid = db.prepare("SELECT id FROM products WHERE code='ANMBBS027 RA'").get().id;
+  const page = (await req('GET', `/bom/${pid}`)).text;
+  for (const v of ['MITSUBISHI', 'LANCER 2007', '2,000g.', '50-MBBS027 NA', 'LEFT']) assert.ok(page.includes(v), v);
+  // الربط بالمخزن: 2 كجم => الخامة 98% = 1.96، الماستر 2% = 0.04، والمكون 1 كوده TM1 => 0.5 كمان على نفس الخامة
+  const tm1 = db.prepare("SELECT id FROM materials WHERE code='TM1'").get().id;
+  const mb = db.prepare("SELECT id FROM materials WHERE name='خامة نموذج ماستر'").get().id;
+  const q = (m) => db.prepare('SELECT qty FROM bom_lines WHERE product_id=? AND material_id=?').get(pid, m)?.qty;
+  assert.equal(q(tm1), 2.46); assert.equal(q(mb), 0.04);
+  // استيراد تاني بعد ما الكارت اتعدّل في البرنامج: الخانات الفاضية في الشيت مابتمسحش
+  await req('POST', `/bom/${pid}/card`, { 'f[inj_price]': '99' });
+  await req('POST', '/r/bom_cards/import', null, fx);
+  assert.match((await req('GET', `/bom/${pid}`)).text, /name="f\[inj_price\]" value="99"/);
+});

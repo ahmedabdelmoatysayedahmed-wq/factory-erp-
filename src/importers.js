@@ -289,4 +289,57 @@ importers.bom = {
   },
 };
 
+// شيت كروت الـ Pre-BOM: صف لكل إسطمبة، والمنتج بيتعرف برقم القطعة
+importers.bom_cards = {
+  title: 'استيراد كروت Pre-BOM من Excel',
+  template: '/templates/prebom-cards-template.xlsx',
+  columnsHint: 'part number، وأي خانات من الكارت: بيانات المنتج، الخامة، الإسطمبة، التغليف، المكونات، الأصناف، الموديلات، والربط بخامات المخزن',
+  matchHint: 'كل صف بيتحط في كارت المنتج بتاعه (برقم القطعة). الخانات الفاضية في الشيت مابتمسحش بيانات موجودة. ولو كتبت خامات المخزن، البرنامج بيحسب الـ BOM لوحده. المكون اللي كوده نفس كود خامة في المخزن بيتربط بيها لوحده.',
+  preview: [['code', 'part number'], ['product_name', 'Product name'], ['weight_g', 'Weight (g)'], ['mat_name', "Mat'l name"], ['main_mat', 'خامة المخزن - الخامة الأساسية']],
+  async parse(buffer) {
+    const PB = require('./prebom');
+    const cols = Object.fromEntries(PB.SHEET_COLS.map(([k, h]) => [k, [norm(h)]]));
+    cols.code.push('رقم القطعة', 'part no');
+    const rows = await readTable(buffer, cols, 'code');
+    return rows.filter((r) => clean(r.code)).map((r) => {
+      const o = {};
+      for (const k of Object.keys(cols)) { const v = r[k] instanceof Date ? r[k].toISOString().slice(0, 10) : clean(r[k]); if (v !== null && k !== '_name') o[k] = v; }
+      return o;
+    }).filter((o) => Object.keys(o).length > 1); // الصف اللي فيه رقم القطعة بس (لسه ماتملاش) بيتجاهل
+  },
+  importRows(db, list) {
+    const PB = require('./prebom');
+    const res = { added: 0, updated: 0, skipped: 0 };
+    const mat = (v) => { if (!v) return null; const m = db.prepare('SELECT id FROM materials WHERE code=? OR name=?').get(v, v); return m ? String(m.id) : null; };
+    db.transaction(() => {
+      for (const r of list) {
+        const p = db.prepare('SELECT * FROM products WHERE code=?').get(r.code);
+        if (!p) { res.skipped++; continue; }
+        const isNew = !db.prepare('SELECT 1 FROM pre_bom WHERE product_id=?').get(p.id);
+        const d = PB.getCard(db, p);
+        for (const [k] of PB.SHEET_COLS) {
+          const v = r[k]; if (v === undefined) continue;
+          let m;
+          if ((m = /^c(\d+)$/.exec(k))) d.components[m[1] - 1].code = v;
+          else if ((m = /^c(\d+)_q$/.exec(k))) d.components[m[1] - 1].qty_text = v;
+          else if ((m = /^i(\d+)_(\w+)$/.exec(k))) d.items[m[1] - 1][m[2]] = v;
+          else if ((m = /^(N[A-E])_(desc|fg|oem)$/.exec(k))) d.variants[m[1]][m[2]] = v;
+          else if (k === 'main_mat') d.main_material_id = mat(v) || d.main_material_id;
+          else if (k === 'mb_mat') d.mb_material_id = mat(v) || d.mb_material_id;
+          else if (k === 'box_mat') d.box_material_id = mat(v) || d.box_material_id;
+          else if (k === 'bag_mat') d.bag_material_id = mat(v) || d.bag_material_id;
+          else if (k === 'partition_mat') d.partition_material_id = mat(v) || d.partition_material_id;
+          else if (k !== 'code') d[k] = v;
+        }
+        // مكون كوده نفس كود خامة في المخزن => بيتربط بيها، والكمية من piece / unit
+        for (const c of d.components) if (c.code && !c.material_id) { const id = mat(c.code); if (id) { c.material_id = id; c.qty = c.qty || (PB.num(c.qty_text) ? String(PB.num(c.qty_text)) : ''); } }
+        PB.saveCard(db, p.id, d);
+        if (d.main_material_id || d.mb_material_id || d.box_material_id || d.bag_material_id || d.partition_material_id || d.components.some((c) => c.material_id)) PB.generateFromCard(db, p.id, d);
+        res[isNew ? 'added' : 'updated']++;
+      }
+    })();
+    return res;
+  },
+};
+
 module.exports = { importers };

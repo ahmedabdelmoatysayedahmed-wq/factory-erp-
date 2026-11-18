@@ -105,4 +105,50 @@ function bomFromCard(d) {
   return Object.values(by);
 }
 
-module.exports = { VARIANTS, ITEMS, COMPONENTS, NOTES, HEAD_A, HEAD_C, empty, normalize, parseSheet, bomFromCard, num };
+// ---------- الكارت في قاعدة البيانات ----------
+function getCard(db, p) {
+  const r = db.prepare('SELECT data FROM pre_bom WHERE product_id=?').get(p.id);
+  const d = normalize(r ? JSON.parse(r.data) : null);
+  if (!r) { d.fpi_no = p.code || ''; d.product_name = p.name_en || p.name; }
+  return d;
+}
+function saveCard(db, pid, d, userId = null) {
+  db.prepare(`INSERT INTO pre_bom (product_id, data, updated_at, updated_by) VALUES (?,?,datetime('now'),?)
+    ON CONFLICT(product_id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at, updated_by=excluded.updated_by`)
+    .run(pid, JSON.stringify(d), userId);
+}
+// خامات الـ BOM من الكارت: بتمسح سطور الـ BOM القديمة وتحط الجديدة
+function generateFromCard(db, pid, d) {
+  const lines = bomFromCard(d);
+  db.transaction(() => {
+    db.prepare('DELETE FROM bom_lines WHERE product_id=?').run(pid);
+    for (const l of lines) db.prepare('INSERT INTO bom_lines (product_id, material_id, qty, scrap_pct, notes) VALUES (?,?,?,?,?)').run(pid, l.material_id, l.qty, l.scrap_pct, 'من كارت Pre-BOM');
+  })();
+  return lines.length;
+}
+
+// ---------- شيت الكروت (صف لكل إسطمبة) ----------
+// [مفتاح، عنوان العمود، القسم]. "c1" = المكون 1 ... "i1_desc" = الصنف 1 ... "NA_fg" = الموديل NA
+const SHEET_COLS = [
+  ['code', 'part number', 'المنتج'], ['_name', 'اسم المنتج (للعلم بس)', 'المنتج'],
+  ['fpi_no', 'FPI NO.', 'بيانات المنتج'], ['car_name', 'Car name', 'بيانات المنتج'], ['car_model', 'Car model', 'بيانات المنتج'],
+  ['product_name', 'Product name', 'بيانات المنتج'], ['supplier', 'Supplier name', 'بيانات المنتج'], ['machine', 'Machine name', 'بيانات المنتج'],
+  ['pcs_per_shot', 'piece / shot', 'بيانات المنتج'], ['weight_g', 'Weight (g)', 'بيانات المنتج'],
+  ['mat_name', "Mat'l name", 'الخامة'], ['mat_code', "Mat'l code", 'الخامة'], ['mat_full_name', "Mat'l name (full)", 'الخامة'],
+  ['ratio', 'Ratio', 'الخامة'], ['masterbatch', 'Masterbatch', 'الخامة'], ['mb_pct', 'Masterbatch %', 'الخامة'],
+  ['mold_h', 'Mold height (mm)', 'الإسطمبة'], ['mold_w', 'Mold wide (mm)', 'الإسطمبة'], ['mold_l', 'Mold long (mm)', 'الإسطمبة'],
+  ['box_name', 'box name', 'التغليف'], ['box_l', 'box long (in)', 'التغليف'], ['box_w', 'box wide (in)', 'التغليف'], ['box_h', 'box hight (in)', 'التغليف'],
+  ['box_pcs', 'piece / box', 'التغليف'], ['packing', 'packing', 'التغليف'], ['partition_no', 'partition no', 'التغليف'], ['partition_unit', 'partition / unit', 'التغليف'],
+  ['bag_size', 'bag size', 'التغليف'], ['bag_thickness', 'bag thickness', 'التغليف'], ['bag_pcs', 'bag piece', 'التغليف'],
+  ...Array.from({ length: COMPONENTS }, (x, i) => [[`c${i + 1}`, `Component ${i + 1}`, 'المكونات'], [`c${i + 1}_q`, `Component ${i + 1} piece / unit`, 'المكونات']]).flat(),
+  ...Array.from({ length: 3 }, (x, i) => [['desc', 'description'], ['mat', 'MAT'], ['cavity', 'cavity / shot'], ['mold_size', 'mold size'], ['wip', 'WIP code']]
+    .map(([k, h]) => [`i${i + 1}_${k}`, `Item ${i + 1} ${h}`, 'الأصناف'])).flat(),
+  ...VARIANTS.map((v) => [[`${v}_desc`, `${v} description`, 'الموديلات'], [`${v}_fg`, `${v} FG CODE`, 'الموديلات'], [`${v}_oem`, `${v} OEM NO.`, 'الموديلات']]).flat(),
+  ['inj_price', 'INJ PRICE', 'أخرى'], ['revision', 'REVISION', 'أخرى'],
+  ['main_mat', 'خامة المخزن - الخامة الأساسية', 'الربط بالمخزن'], ['mb_mat', 'خامة المخزن - الماستر باتش', 'الربط بالمخزن'],
+  ['runner_g', 'وزن الرنر للضربة (جرام)', 'الربط بالمخزن'], ['scrap_pct', 'نسبة الفاقد %', 'الربط بالمخزن'],
+  ['box_mat', 'خامة المخزن - البوكس', 'الربط بالمخزن'], ['bag_mat', 'خامة المخزن - الكيس', 'الربط بالمخزن'], ['bag_qty', 'الكيس - الكمية للقطعة', 'الربط بالمخزن'],
+  ['partition_mat', 'خامة المخزن - البارتيشن', 'الربط بالمخزن'], ['partition_qty', 'البارتيشن - الكمية للقطعة', 'الربط بالمخزن'],
+];
+
+module.exports = { VARIANTS, ITEMS, COMPONENTS, NOTES, HEAD_A, HEAD_C, empty, normalize, parseSheet, bomFromCard, num, getCard, saveCard, generateFromCard, SHEET_COLS };
