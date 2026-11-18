@@ -529,35 +529,34 @@ test('shift sheet: hourly entry within 3 minutes, locked after, photo/video to u
 
     // قبل ما الساعة تخلص: ممنوع
     at(8, 30); assert.match((await slot(0, { qty: '10' })).error, /لسه ماخلصتش/);
-    // في الـ 3 دقايق: في الميعاد
+    // في الـ 5 دقايق بعد الساعة: في الميعاد (المشرف مش محتاج صورة)
     at(9, 2); assert.deepEqual(await slot(0, { qty: '100', scrap: '5', cycle_time: '36' }), { ok: true, status: 'on_time' });
     const log = () => db.prepare('SELECT * FROM production_logs WHERE source_key LIKE ?').get(`sheet:${sid}:day:%`);
     assert.equal(log().qty_produced, 100); assert.equal(log().qty_scrap, 5); assert.equal(log().hours_worked, 1);
     assert.equal(db.prepare('SELECT status FROM production_orders WHERE id=?').get(id('production_orders', 'PO-SH1')).status, 'in_progress');
 
-    // الساعة التانية عدّى وقتها => اتقفلت "ماشتغلش"
-    at(10, 4); SH.markMissed(db);
-    assert.equal(db.prepare('SELECT status FROM hourly_logs WHERE sheet_id=? AND slot=1').get(sid).status, 'missed');
-    assert.match(log().notes, /1 ساعة ماتسجلتش/);
-    // عامل الإنتاج: من غير صورة مرفوض، وبصورة بتتحسب
+    // عامل الإنتاج: في الـ 5 دقايق بعد الساعة، والبيانات لازم معاها صورة أو فيديو
     await req('POST', '/users', { username: 'worker1', full_name: 'عامل', role: 'operator', password: 'work123', active: '1', employee_id: id('employees', 'SW1') });
     const w = client();
     assert.equal((await w('POST', '/login', { username: 'worker1', password: 'work123' })).location, '/floor');
     assert.equal((await w('POST', '/shifts', { machine_id: id('machines', 'SM-1') })).status, 403); // مايفتحش محاضر
-    assert.match(JSON.parse((await w('POST', `/shifts/${sid}/slot/1`, { qty: '90' })).text).error, /قدامك 5 دقايق/);
-    assert.match((await w('GET', '/floor')).text, /اتقفلت. ارفع صورة أو فيديو/); // في وقت الصورة بيظهر عداد
+    at(10, 3);
+    assert.match((await w('GET', '/floor')).text, /صورة أو فيديو \(إجباري\)/);
+    assert.match(JSON.parse((await w('POST', `/shifts/${sid}/slot/1`, { qty: '90' })).text).error, /لازم ترفع صورة أو فيديو/);
     const up = await fetch(`${base}/shifts/${sid}/slot/1?qty=90&scrap=2`, { method: 'POST', body: Buffer.from('fakejpeg'), headers: { 'content-type': 'image/jpeg', cookie: w.cookie() } }).then((r) => r.json());
-    assert.deepEqual(up, { ok: true, status: 'late_proof' });
+    assert.deepEqual(up, { ok: true, status: 'on_time' });
     const proof = db.prepare('SELECT proof_file FROM hourly_logs WHERE sheet_id=? AND slot=1').get(sid).proof_file;
     assert.equal((await req('GET', `/shifts/${sid}/proof/${proof}`)).status, 200);
     assert.equal(log().qty_produced, 190); assert.equal(log().hours_worked, 2);
 
-    // ساعة تالتة: عدّى الـ 3 دقايق والـ 5 دقايق بتوع الصورة => اتقفلت نهائي، حتى بصورة
-    at(11, 10); SH.markMissed(db);
+    // الساعة التالتة: عدّى الـ 5 دقايق => اتقفلت "ماشتغلش"، والعامل مايقدرش يسجلها حتى بصورة
+    at(11, 6); SH.markMissed(db);
+    assert.equal(db.prepare('SELECT status FROM hourly_logs WHERE sheet_id=? AND slot=2').get(sid).status, 'missed');
+    assert.match(log().notes, /1 ساعة ماتسجلتش/);
     assert.equal(log().hours_worked, 2);
     const late = await fetch(`${base}/shifts/${sid}/slot/2?qty=40`, { method: 'POST', body: Buffer.from('x'), headers: { 'content-type': 'image/jpeg', cookie: w.cookie() } }).then((r) => r.json());
-    assert.equal(late.ok, false); assert.match(late.error, /اتقفلت نهائي/);
-    assert.match((await w('GET', '/floor')).text, /اتقفلت نهائي/);
+    assert.equal(late.ok, false); assert.match(late.error, /اتقفلت/);
+    assert.match((await w('GET', '/floor')).text, /اتقفلت واتحسبت ماشتغلش/);
     // المشرف بس يقدر يعدّلها (من غير صورة)
     assert.deepEqual(await slot(2, { qty: '50' }), { ok: true, status: 'edited' });
     assert.equal(log().hours_worked, 3);

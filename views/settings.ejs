@@ -8,9 +8,8 @@
     <small><%= t('أيام الراحة مابتتحسبش غياب، وشاشة الحضور بتسجلها «راحة» تلقائياً.') %></small>
   </fieldset>
   <label><%= t('بداية الوردية النهاري (الساعة)') %><input type="number" name="shift_start_hour" min="0" max="23" value="<%= db_shift_start %>"></label>
-  <label><%= t('دقايق تسجيل الإنتاج بعد كل ساعة') %><input type="number" name="hourly_window_min" min="1" max="60" value="<%= db_window %>"></label>
-  <label><%= t('دقايق رفع الصورة/الفيديو بعدها') %><input type="number" name="proof_window_min" min="1" max="120" value="<%= db_proof %>"></label>
-  <small class="muted"><%= t('بعد دقايق التسجيل الساعة بتتقفل وتتحسب ماشتغلش، وقدام العامل دقايق الصورة/الفيديو علشان تتحسب. بعدها بتتقفل نهائي والمشرف بس يعدّلها.') %></small>
+  <label><%= t('دقايق تسجيل بيانات الساعة والصورة/الفيديو بعد كل ساعة') %><input type="number" name="hourly_window_min" min="1" max="60" value="<%= db_window %>"></label>
+  <small class="muted"><%= t('لو الدقايق دي عدّت من غير البيانات والصورة أو الفيديو، الساعة بتتقفل وتتحسب ماشتغلش، والمشرف بس يعدّلها.') %></small>
   <label><%= t('أقل رصيد للمنتج قبل التنبيه (الحد العام)') %><input type="number" name="product_min_stock" min="0" value="<%= settings.productMinStock %>"></label>
   <small class="muted"><%= t('لو رصيد أي منتج نزل تحت الرقم ده يطلع تنبيه إنه محتاج إنتاج. وتقدر تحط حد مختلف لكل منتج من شاشة المنتجات.') %></small>
   <label class="chk"><input type="checkbox" name="leaves_enabled" value="1" <%= settings.leavesEnabled ? 'checked' : '' %>> <%= t('تفعيل قسم الإجازات') %></label>

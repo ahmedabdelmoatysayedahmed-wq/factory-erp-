@@ -26,7 +26,7 @@
   <% if (part === 'night') { %><div class="sh-sub"><%= t(label) %></div><% } %>
   <table class="sh-grid"><thead><tr><th><%= t('من') %></th><th><%= t('الي') %></th><th><%= t('معدل الانتاج') %></th><th><%= t('عدد التوالف') %></th><th><%= t('اسم العامل') %></th><th><%= t('زمن الدورة') %></th><th><%= t('ملاحظات') %></th></tr></thead><tbody>
   <% for (const s of rows) { const e = s.e; %>
-    <tr class="sh-<%= s.state %> <%= e && e.status === 'missed' ? 'sh-missed' : '' %>" <% if (canEnter && (['open', 'proof'].includes(s.state) || (boss && s.state !== 'future' && s.state !== 'running'))) { %>onclick="pick(<%= s.i %>)" style="cursor:pointer"<% } %>>
+    <tr class="sh-<%= s.state %> <%= e && e.status === 'missed' ? 'sh-missed' : '' %>" <% if (canEnter && (s.state === 'open' || (boss && s.state !== 'future' && s.state !== 'running'))) { %>onclick="pick(<%= s.i %>)" style="cursor:pointer"<% } %>>
       <td><%= s.from %></td><td><%= s.to %></td>
       <td><b><%= e ? n(e.qty) : '' %></b></td><td><%= e ? n(e.scrap) : '' %></td>
       <td><%= e ? (e.ename || '') + (e.tname ? ' / ' + e.tname : '') : '' %></td>
@@ -64,7 +64,7 @@
     <label><span><%= t('العامل') %></span><select name="employee_id"><option value="">—</option><%- opts(emps.filter((e) => e.worker_type !== 'tech'), '') %></select></label>
     <label><span><%= t('الفني') %></span><select name="tech_id"><option value="">—</option><%- opts(emps.filter((e) => e.worker_type === 'tech'), '') %></select></label>
     <label><span><%= t('ملاحظات') %></span><input name="notes"></label>
-    <label id="proof-box" hidden><span>📎 <%= t('صورة أو فيديو (إجباري بعد ما الوقت يعدّي)') %></span><input type="file" name="proof" accept="image/*,video/*" capture="environment"></label>
+    <label id="proof-box"><span>📎 <%= t(boss ? 'صورة أو فيديو (اختياري للمشرف)' : 'صورة أو فيديو (إجباري)') %></span><input type="file" name="proof" accept="image/*,video/*" capture="environment"></label>
   </div>
   <div class="btns"><button class="btn primary"><%= t('حفظ') %></button></div>
 </form>
@@ -96,14 +96,13 @@
 <% } %>
 <script>
 var SLOTS = <%- JSON.stringify(slots.map((s) => ({ i: s.i, from: s.from, to: s.to, state: s.state, e: s.e ? { qty: s.e.qty, scrap: s.e.scrap, cycle_time: s.e.cycle_time, employee_id: s.e.employee_id, tech_id: s.e.tech_id, notes: s.e.notes, status: s.e.status } : null }))).replace(/</g, '\\u003c') %>;
-var TX = <%- JSON.stringify({ late: t(['الوقت عدّى: لازم ترفع صورة أو فيديو (قدامك {0} دقايق من آخر الـ {1} دقايق)', P, W]), boss: t('أنت مشرف: تقدر تعدّل من غير صورة'), ok: t('تم الحفظ'), hour: t('الساعة') }).replace(/</g, '\\u003c') %>;
+var TX = <%- JSON.stringify({ late: t(['سجّل البيانات وارفع صورة أو فيديو (قدامك {0} دقايق بعد الساعة)', W]), boss: t('أنت مشرف: تقدر تعدّل من غير صورة'), ok: t('تم الحفظ'), hour: t('الساعة') }).replace(/</g, '\\u003c') %>;
 var BOSS = <%= boss %>, ID = <%= sh.id %>;
 function pick(i) {
   var s = SLOTS[i], f = document.getElementById('entry'); if (!f) return;
   f.slot.value = i; document.getElementById('slot-label').textContent = '(' + TX.hour + ' ' + s.from + ' → ' + s.to + ')';
-  var late = s.state === 'proof' || s.state === 'missed' || (s.state === 'done' && s.e && s.e.status !== 'on_time') || s.state === 'off';
-  document.getElementById('proof-box').hidden = !late;
-  document.getElementById('slot-hint').textContent = late ? (BOSS ? TX.boss : TX.late) : '';
+  f.proof.required = !BOSS;
+  document.getElementById('slot-hint').textContent = BOSS ? TX.boss : TX.late;
   ['qty', 'scrap', 'cycle_time', 'employee_id', 'tech_id', 'notes'].forEach(function (k) { f[k].value = s.e && s.e[k] != null && s.e.status !== 'missed' ? s.e[k] : (k === 'scrap' ? 0 : ''); });
   f.scrollIntoView({ behavior: 'smooth' }); f.qty.focus();
 }

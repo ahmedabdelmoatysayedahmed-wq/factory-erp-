@@ -1,7 +1,7 @@
 // محضر استلام الوردية: محضر لكل ماكينة في اليوم، 24 ساعة (نهاري 8 الصبح → 8 بالليل، وليلي 8 بالليل → 8 الصبح)
-// بعد ما كل ساعة تخلص، العامل قدامه N دقايق (الافتراضي 3) يسجل إنتاجها.
-// لو الوقت عدّى: الساعة بتتقفل وتتحسب "ماشتغلش" (إنتاج صفر)، وقدامه M دقايق (الافتراضي 5) يرفع صورة أو فيديو علشان تتحسب.
-// بعدها بتتقفل نهائي، ومحدش يعدّلها غير المشرف.
+// بعد ما كل ساعة تخلص، العامل قدامه N دقايق (الافتراضي 5) يسجل بيانات الساعة ويرفع صورة أو فيديو معاها.
+// لو الوقت عدّى من غير البيانات والصورة/الفيديو: الساعة بتتقفل وتتحسب "ماشتغلش" (إنتاج صفر)،
+// ومحدش يعدّلها غير المشرف.
 // الساعات المتسجلة بتتجمع لوحدها في "الإنتاج اليومي" (ومنها التقارير وخصم الخامات وأوامر التشغيل).
 const { applyConsumption, removeConsumption } = require('./bom');
 
@@ -11,8 +11,7 @@ const now = () => (clockOverride ? new Date(clockOverride) : new Date());
 const setClock = (d) => { clockOverride = d ? new Date(d) : null; }; // للاختبارات
 
 const startHour = (db) => Number(db.getSetting('shift_start_hour') ?? 8);
-const windowMin = (db) => Number(db.getSetting('hourly_window_min') ?? 3);
-const proofMin = (db) => Number(db.getSetting('proof_window_min') ?? 5);
+const windowMin = (db) => Number(db.getSetting('hourly_window_min') ?? 5);
 const pad = (n) => String(n).padStart(2, '0');
 const localDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const localStamp = (d) => `${localDate(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -26,8 +25,8 @@ const half = (i) => (i < 12 ? 'day' : 'night');
 // تاريخ المحضر الحالي: قبل 8 الصبح لسه وردية ليل امبارح
 function currentSheetDate(db, d = now()) { const x = new Date(d); if (x.getHours() < startHour(db)) x.setDate(x.getDate() - 1); return localDate(x); }
 
-// حالة الساعة: done (اتسجلت) | open (الـ 3 دقايق شغالين) | proof (اتقفلت، والـ 5 دقايق بتوع الصورة/الفيديو شغالين)
-// | missed (اتقفلت نهائي) | running (الساعة لسه شغالة) | future | off (قبل فتح المحضر أو بعد قفله)
+// حالة الساعة: done (اتسجلت) | open (الـ 5 دقايق شغالين) | missed (اتقفلت: ماشتغلش)
+// | running (الساعة لسه شغالة) | future | off (قبل فتح المحضر أو بعد قفله)
 function slotState(db, sheet, i, entry, at = now()) {
   const s = slotStart(db, sheet.date, i), e = slotEnd(db, sheet.date, i);
   if (entry && entry.status !== 'missed') return { state: 'done', end: e };
@@ -37,10 +36,8 @@ function slotState(db, sheet, i, entry, at = now()) {
   if (at < s) return { state: 'future', end: e };
   if (at < e) return { state: 'running', end: e };
   const deadline = new Date(e.getTime() + windowMin(db) * 60e3);
-  const proofDeadline = new Date(deadline.getTime() + proofMin(db) * 60e3);
-  if (at <= deadline) return { state: 'open', end: e, deadline, proofDeadline };
-  if (at <= proofDeadline) return { state: 'proof', end: e, deadline, proofDeadline };
-  return { state: 'missed', end: e, deadline, proofDeadline };
+  if (at <= deadline) return { state: 'open', end: e, deadline };
+  return { state: 'missed', end: e, deadline };
 }
 
 // تجميع الساعات في "الإنتاج اليومي": سطر لكل (نص الوردية × العامل)
@@ -83,8 +80,7 @@ function markMissed(db, at = now()) {
     let changed = false;
     db.transaction(() => {
       for (let i = 0; i < SLOTS; i++) {
-        const stt = slotState(db, sh, i, null, at).state;
-        if (have.has(i) || (stt !== 'missed' && stt !== 'proof')) continue; // بتتحسب ماشتغلش أول ما الـ 3 دقايق يخلصوا
+        if (have.has(i) || slotState(db, sh, i, null, at).state !== 'missed') continue; // بتتحسب ماشتغلش أول ما الـ 5 دقايق يخلصوا
         db.prepare("INSERT INTO hourly_logs (sheet_id, slot, qty, scrap, employee_id, tech_id, status, entered_at) VALUES (?,?,0,0,?,?,'missed',?)")
           .run(sh.id, i, i < 12 ? sh.day_worker_id : sh.night_worker_id, i < 12 ? sh.day_tech_id : sh.night_tech_id, localStamp(at));
         n++; changed = true;
@@ -99,4 +95,4 @@ function markMissed(db, at = now()) {
   return n;
 }
 
-module.exports = { SLOTS, now, setClock, startHour, windowMin, proofMin, slotStart, slotEnd, slotState, hour12, half, currentSheetDate, aggregate, markMissed, localDate, localStamp, parseLocal };
+module.exports = { SLOTS, now, setClock, startHour, windowMin, slotStart, slotEnd, slotState, hour12, half, currentSheetDate, aggregate, markMissed, localDate, localStamp, parseLocal };
