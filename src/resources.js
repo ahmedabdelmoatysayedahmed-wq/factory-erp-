@@ -1,4 +1,5 @@
 // تعريف الأقسام (الجداول) وحقول كل قسم - الشاشات تُبنى منها تلقائياً
+const { applyConsumption, removeConsumption } = require('./bom');
 const opt = (o) => Object.entries(o).map(([value, label]) => ({ value, label }));
 
 const STATUS = {
@@ -50,6 +51,7 @@ const resources = {
   },
   products: {
     title: 'المنتجات', single: 'منتج', order: 'name',
+    rowLinks: [{ label: 'BOM', href: (row) => `/bom/${row.id}` }],
     fields: [
       { name: 'code', label: 'رقم القطعة', list: true },
       { name: 'name', label: 'الاسم', required: true, list: true },
@@ -211,13 +213,16 @@ const resources = {
       { name: 'downtime_reason', label: 'سبب التوقف' },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' },
     ],
+    // خصم الخامات من المخزن حسب الـ BOM (وإعادة الحساب لو التسجيل اتعدل، والإرجاع لو اتمسح)
+    afterSave: (db, id) => applyConsumption(db, id),
+    beforeDelete: (db, id) => removeConsumption(db, id),
     beforeSave(row, db) {
       // لو اختار أمر تشغيل ومفيش منتج، ناخد منتج الأمر
       if (row.order_id && !row.product_id) {
         const o = db.prepare('SELECT product_id FROM production_orders WHERE id=?').get(row.order_id);
         if (o) row.product_id = o.product_id;
       }
-      // ولو اختار إسطمبة، ناخد المنتج بتاعها
+      // ولو اختار إسطمبة، ناخد المنتج بتاعها (لازم قبل الحفظ علشان الخامات تتخصم صح)
       if (row.mold_id && !row.product_id) {
         const m = db.prepare('SELECT product_id FROM molds WHERE id=?').get(row.mold_id);
         if (m) row.product_id = m.product_id;

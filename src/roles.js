@@ -23,6 +23,7 @@ const PERMS = {
   product_movements: { view: ['admin', 'manager', 'supervisor', 'storekeeper', 'viewer'], edit: ['admin', 'manager', 'storekeeper'] },
   production_plans:  { view: ['admin', 'manager', 'supervisor', 'storekeeper', 'viewer'], edit: ['admin', 'manager', 'supervisor'] },
   alerts:            { view: ['admin', 'manager', 'supervisor', 'storekeeper', 'viewer'], edit: [] },
+  bom:               { view: ['admin', 'manager', 'supervisor', 'storekeeper', 'viewer'], edit: ['admin', 'manager', 'supervisor'] },
   products:          { view: ['admin', 'manager', 'supervisor', 'storekeeper', 'viewer'], edit: ['admin', 'manager', 'supervisor'] },
   materials:         { view: ['admin', 'manager', 'storekeeper', 'supervisor', 'viewer'], edit: ['admin', 'manager', 'storekeeper'] },
   stock_movements:   { view: ['admin', 'manager', 'storekeeper', 'viewer'], edit: ['admin', 'manager', 'storekeeper'] },

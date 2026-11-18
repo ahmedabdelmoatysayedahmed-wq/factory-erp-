@@ -35,6 +35,22 @@
   </tbody>
 </table></div>
 
+<% if (lines.length) { %>
+<section class="card">
+  <h2>🧾 <%= t('الخامات المطلوبة لتنفيذ الباقي من الخطة') %></h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th><%= t('الخامة') %></th><th><%= t('المطلوب') %></th><th><%= t('الرصيد في المخزن') %></th><th><%= t('العجز') %></th></tr></thead>
+    <tbody>
+    <% for (const m of reqs.rows) { %><tr><td><%= m.name %></td><td><b><%= n(m.need) %></b> <small><%= m.unit || '' %></small></td><td><%= n(m.stock) %></td>
+      <td class="<%= m.short ? 'warn' : '' %>"><%= m.short ? n(m.short) + ' ' + (m.unit || '') : '✅' %></td></tr><% } %>
+    <% if (!reqs.rows.length) { %><tr><td colspan="4" class="empty"><%= t('مفيش منتجات في الخطة ليها BOM') %></td></tr><% } %>
+    </tbody>
+  </table></div>
+  <% if (reqs.noBom.length) { %><p class="muted">⚠️ <%= t('منتجات في الخطة مالهاش BOM فمش محسوبة:') %>
+    <% reqs.noBom.forEach((l, i) => { %><a href="/bom/<%= l.product_id %>"><%= l.name %></a><%= i < reqs.noBom.length - 1 ? ' / ' : '' %><% }) %></p><% } %>
+</section>
+<% } %>
+
 <% if (edit) { %>
 <form method="post" action="/plan" class="card form">
   <h2><%= t('إضافة منتج للخطة') %></h2>

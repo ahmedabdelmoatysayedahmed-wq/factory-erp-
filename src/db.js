@@ -71,6 +71,10 @@ CREATE TABLE IF NOT EXISTS production_plans (
   id INTEGER PRIMARY KEY, period_type TEXT NOT NULL, period_start TEXT NOT NULL,
   product_id INTEGER NOT NULL REFERENCES products(id), qty_planned REAL NOT NULL, notes TEXT,
   UNIQUE(period_type, period_start, product_id));
+CREATE TABLE IF NOT EXISTS bom_lines (
+  id INTEGER PRIMARY KEY, product_id INTEGER NOT NULL REFERENCES products(id),
+  material_id INTEGER NOT NULL REFERENCES materials(id), qty REAL NOT NULL, scrap_pct REAL DEFAULT 0, notes TEXT,
+  UNIQUE(product_id, material_id));
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS leaves (
   id INTEGER PRIMARY KEY, employee_id INTEGER NOT NULL REFERENCES employees(id), type TEXT NOT NULL,
@@ -93,6 +97,7 @@ addColumn('products', 'name_en', 'TEXT');
 addColumn('molds', 'producer', 'TEXT');
 addColumn('molds', 'agent', 'TEXT');
 addColumn('products', 'min_stock', 'REAL');
+addColumn('stock_movements', 'production_log_id', 'INTEGER');
 for (const c of ['part_no', 'oem_no', 'material', 'steel', 'runner', 't0_date']) addColumn('upcoming_molds', c, 'TEXT');
 
 // الإعدادات الافتراضية: الجمعة راحة أسبوعية، وقسم الإجازات مقفول

@@ -1,0 +1,60 @@
+<%- include('partials/header', { title: 'BOM' }) %>
+<% const n = (x, d = 3) => Number(Number(x || 0).toFixed(d)).toLocaleString('en'); const edit = can('bom', 'edit'); %>
+<div class="head">
+  <h1>🧾 BOM: <%= p.name %> <small><%= p.code || '' %></small></h1>
+  <a class="btn" href="/bom">→ <%= t('كل المنتجات') %></a>
+</div>
+<div class="kpis">
+  <div class="kpi"><b><%= lines.length %></b><span><%= t('عدد الخامات') %></span></div>
+  <div class="kpi"><b><%= cost === null ? '—' : n(cost, 2) %></b><span><%= t('تكلفة الخامات للقطعة') %></span></div>
+  <div class="kpi"><b><%= cost === null ? '—' : n(cost * 1000, 0) %></b><span><%= t('تكلفة الخامات لكل 1000 قطعة') %></span></div>
+</div>
+<div class="table-wrap card"><table>
+  <thead><tr><% if (edit) { %><th></th><% } %><th><%= t('الخامة') %></th><th><%= t('الكمية للقطعة') %></th><th><%= t('نسبة الفاقد %') %></th><th><%= t('بعد الفاقد') %></th><th><%= t('لكل 1000 قطعة') %></th><th><%= t('سعر الوحدة') %></th><th><%= t('التكلفة للقطعة') %></th></tr></thead>
+  <tbody>
+  <% for (const l of lines) { %><tr>
+    <% if (edit) { %><td class="actions"><form method="post" action="/bom/<%= p.id %>/line/<%= l.id %>/delete" class="inline" onsubmit="return confirm('<%= t('متأكد من الحذف؟') %>')"><button class="link danger"><%= t('حذف') %></button></form></td><% } %>
+    <td data-label="<%= t('الخامة') %>"><%= l.mname %> <small class="muted"><%= l.mcode || '' %></small></td>
+    <% if (edit) { %>
+    <td data-label="<%= t('الكمية للقطعة') %>" colspan="2"><form method="post" action="/bom/<%= p.id %>" class="inline nw"><input type="hidden" name="material_id" value="<%= l.material_id %>">
+      <input name="qty" type="number" step="any" min="0" value="<%= l.qty %>" style="width:90px" onchange="this.form.submit()"> <small><%= l.unit || '' %></small>
+      &nbsp; <input name="scrap_pct" type="number" step="any" min="0" value="<%= l.scrap_pct || 0 %>" style="width:70px" onchange="this.form.submit()"> %</form></td>
+    <% } else { %><td><%= n(l.qty) %> <%= l.unit || '' %></td><td><%= n(l.scrap_pct || 0, 1) %>%</td><% } %>
+    <td data-label="<%= t('بعد الفاقد') %>"><%= n(l.per) %></td>
+    <td data-label="<%= t('لكل 1000 قطعة') %>"><b><%= n(l.per * 1000, 1) %></b> <small><%= l.unit || '' %></small></td>
+    <td data-label="<%= t('سعر الوحدة') %>"><%= l.unit_cost ? n(l.unit_cost, 2) : '—' %></td>
+    <td data-label="<%= t('التكلفة للقطعة') %>"><%= l.cost === null ? '—' : n(l.cost, 2) %></td></tr><% } %>
+  <% if (!lines.length) { %><tr><td colspan="8" class="empty"><%= t('المنتج ده مالوش BOM لسه. ضيف الخامات تحت.') %></td></tr><% } %>
+  </tbody>
+</table></div>
+
+<% if (edit) { %>
+<form method="post" action="/bom/<%= p.id %>" class="card form">
+  <h2><%= t('إضافة خامة') %></h2>
+  <div class="grid">
+    <label><span><%= t('الخامة') %></span><select name="material_id" required><option value=""><%= t('— اختر —') %></option>
+      <% for (const m of materials) { %><option value="<%= m.id %>"><%= m.label %><%= m.unit ? ' (' + m.unit + ')' : '' %></option><% } %></select></label>
+    <label><span><%= t('الكمية للقطعة') %></span><input name="qty" type="number" step="any" min="0" required placeholder="0.35"><small><%= t('بوحدة الخامة. مثلاً 0.35 كجم، أو 0.025 كرتونة لو الكرتونة فيها 40 قطعة') %></small></label>
+    <label><span><%= t('نسبة الفاقد %') %></span><input name="scrap_pct" type="number" step="any" min="0" value="0"><small><%= t('زي الرنرز والتجارب. بتتضاف على الكمية') %></small></label>
+  </div>
+  <div class="btns"><button class="btn primary"><%= t('إضافة') %></button></div>
+</form>
+<% if (others.length) { %>
+<form method="post" action="/bom/<%= p.id %>/copy" class="card form">
+  <h2><%= t('انسخ BOM من منتج تاني') %></h2>
+  <p class="muted"><%= t('مفيد للقطع اليمين والشمال أو الموديلات المتشابهة. بعد النسخ عدّل اللي مختلف.') %></p>
+  <div class="grid"><label><select name="from" required><option value=""><%= t('— اختر —') %></option>
+    <% for (const o of others) { %><option value="<%= o.id %>"><%= o.label %></option><% } %></select></label></div>
+  <div class="btns"><button class="btn"><%= t('نسخ') %></button></div>
+</form>
+<% } %>
+<% if (lines.length && used) { %>
+<form method="post" action="/bom/<%= p.id %>/recalc" class="card form" onsubmit="return confirm('<%= t('إعادة حساب استهلاك الخامات للإنتاج المتسجل من التاريخ ده؟') %>')">
+  <h2><%= t('الإنتاج اللي اتسجل قبل الـ BOM') %></h2>
+  <p class="muted"><%= t('الخصم الأوتوماتيك بيشتغل على الإنتاج الجديد. لو عاوز تخصم خامات إنتاج قديم اتسجل قبل ما تعمل الـ BOM، اختار من تاريخ إمتى.') %></p>
+  <div class="grid"><label><span><%= t('من تاريخ') %></span><input type="date" name="from"></label></div>
+  <div class="btns"><button class="btn"><%= t('احسب الاستهلاك') %></button></div>
+</form>
+<% } %>
+<% } %>
+<%- include('partials/footer') %>

@@ -10,7 +10,7 @@
 <% if (user) {
   const groups = [
     ['الرئيسية', [['/', 'لوحة التحكم', 'dashboard'], ['/reports', 'تقارير الإنتاجية', 'reports']]],
-    ['الإنتاج', [['/plan', 'خطة الإنتاج', 'production_plans'], ['/r/production_logs', 'الإنتاج اليومي', 'production_logs'], ['/r/production_orders', 'أوامر التشغيل', 'production_orders'], ['/r/products', 'المنتجات', 'products']]],
+    ['الإنتاج', [['/plan', 'خطة الإنتاج', 'production_plans'], ['/r/production_logs', 'الإنتاج اليومي', 'production_logs'], ['/r/production_orders', 'أوامر التشغيل', 'production_orders'], ['/r/products', 'المنتجات', 'products'], ['/bom', 'BOM (مكونات المنتجات)', 'bom']]],
     ['المعدات', [['/r/machines', 'الماكينات', 'machines'], ['/r/molds', 'الإسطمبات', 'molds'], ['/r/upcoming_molds', 'الإسطمبات القادمة', 'upcoming_molds', 'sub'], ['/r/assets', 'الأصول', 'assets']]],
     ['المخزن', [['/stock', 'مخزن المنتجات', 'product_stock'], ['/r/materials', 'المواد الخام', 'materials'], ['/r/stock_movements', 'حركات المخزن', 'stock_movements']]],
     ['الموظفين', [['/r/employees', 'الموظفين', 'employees'], ['/attendance', 'الحضور والانصراف', 'attendance'], ['/r/leaves', 'الإجازات', 'leaves']]],

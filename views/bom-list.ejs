@@ -1,0 +1,28 @@
+<%- include('partials/header', { title: 'BOM (مكونات المنتجات)' }) %>
+<% const n = (x, d = 2) => Number(Number(x || 0).toFixed(d)).toLocaleString('en'); %>
+<div class="head">
+  <h1>🧾 <%= t('BOM (مكونات المنتجات)') %> <small>(<%= rows.length %>)</small></h1>
+  <% if (can('bom', 'edit')) { %><a class="btn" href="/r/bom/import">📥 <%= t('استيراد BOM من Excel') %></a><% } %>
+</div>
+<form class="filters card" method="get">
+  <input name="q" value="<%= q %>" placeholder="<%= t('بحث...') %>">
+  <select name="only">
+    <option value=""><%= t('كل المنتجات') %> (<%= counts.all %>)</option>
+    <option value="with" <%= only === 'with' ? 'selected' : '' %>><%= t('ليها BOM') %> (<%= counts.with %>)</option>
+    <option value="without" <%= only === 'without' ? 'selected' : '' %>><%= t('مالهاش BOM') %> (<%= counts.all - counts.with %>)</option>
+  </select>
+  <button class="btn"><%= t('تصفية') %></button>
+</form>
+<div class="table-wrap card"><table>
+  <thead><tr><th></th><th><%= t('رقم القطعة') %></th><th><%= t('المنتج') %></th><th><%= t('عدد الخامات') %></th><th><%= t('تكلفة الخامات للقطعة') %></th></tr></thead>
+  <tbody>
+  <% for (const p of rows) { %><tr>
+    <td class="actions"><a class="strong-link" href="/bom/<%= p.id %>"><%= p.n ? t('فتح') : t('+ اعمل BOM') %></a></td>
+    <td data-label="<%= t('رقم القطعة') %>"><%= p.code || '' %></td><td data-label="<%= t('المنتج') %>"><%= p.name %></td>
+    <td data-label="<%= t('عدد الخامات') %>"><% if (p.n) { %><%= p.n %><% } else { %><span class="tag t-absent"><%= t('مالهاش BOM') %></span><% } %></td>
+    <td data-label="<%= t('تكلفة الخامات للقطعة') %>"><%= p.cost === null ? '—' : n(p.cost) %></td></tr><% } %>
+  <% if (!rows.length) { %><tr><td colspan="5" class="empty"><%= t('لا توجد بيانات') %></td></tr><% } %>
+  </tbody>
+</table></div>
+<p class="muted"><%= t('المنتج اللي مالوش BOM، الإنتاج بتاعه مش بيخصم خامات من المخزن.') %></p>
+<%- include('partials/footer') %>

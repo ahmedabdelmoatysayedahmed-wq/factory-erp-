@@ -262,3 +262,61 @@ test('finished goods stock, alerts under minimum, production plan', async () => 
   assert.equal((await s('GET', '/r/product_movements/new')).status, 200);
   assert.equal((await s('POST', '/plan', { type: 'week', product_id: pid, qty: '5' })).status, 403);
 });
+
+test('BOM: material cost, automatic consumption on production, plan requirements', async () => {
+  const db = require('../src/db');
+  const { materialStock } = require('../src/bom');
+  const req = client();
+  await req('POST', '/login', { username: 'admin', password: 'admin123' });
+  await req('POST', '/r/materials', { code: 'M-B1', name: 'خامة BOM تجريبية', unit: 'كجم', min_stock: '10', unit_cost: '50' });
+  const mid = db.prepare("SELECT id FROM materials WHERE code='M-B1'").get().id;
+  await req('POST', '/r/stock_movements', { date: '2026-09-01', material_id: mid, type: 'in', qty: '100' });
+  for (const c of ['PB-1', 'PB-2', 'PB-3']) await req('POST', '/r/products', { code: c, name: 'منتج BOM ' + c });
+  const pid = (c) => db.prepare('SELECT id FROM products WHERE code=?').get(c).id;
+  const emp = db.prepare('SELECT id FROM employees LIMIT 1').get().id, mach = db.prepare('SELECT id FROM machines LIMIT 1').get().id;
+  const stock = () => Math.round(materialStock(db)[mid] * 1000) / 1000;
+
+  // BOM: 0.5 كجم للقطعة + 10% فاقد => 0.55 كجم => التكلفة 27.5
+  await req('POST', `/bom/${pid('PB-1')}`, { material_id: mid, qty: '0.5', scrap_pct: '10' });
+  const page = (await req('GET', `/bom/${pid('PB-1')}`)).text;
+  assert.match(page, /خامة BOM تجريبية/);
+  assert.match(page, /<b>27.5<\/b><span>/);
+  assert.match((await req('GET', '/bom?only=with&q=PB-1')).text, /منتج BOM PB-1/);
+
+  // تسجيل إنتاج 100 قطعة => 55 كجم بتتخصم لوحدها
+  await req('POST', '/r/production_logs', { date: '2026-09-02', employee_id: emp, machine_id: mach, product_id: pid('PB-1'), qty_produced: '90', qty_scrap: '10' });
+  assert.equal(stock(), 45);
+  const logId = db.prepare('SELECT id FROM production_logs WHERE product_id=?').get(pid('PB-1')).id;
+  assert.match((await req('GET', '/r/stock_movements?material_id=' + mid)).text, new RegExp(`استهلاك إنتاج #${logId}`));
+  // تعديل التسجيل لـ 200 => الخصم بيتحسب من جديد (110)
+  await req('POST', `/r/production_logs/${logId}`, { date: '2026-09-02', employee_id: emp, machine_id: mach, product_id: pid('PB-1'), qty_produced: '200', qty_scrap: '0' });
+  assert.equal(stock(), -10);
+  // مسح التسجيل => الخامة بترجع
+  await req('POST', `/r/production_logs/${logId}/delete`, {});
+  assert.equal(stock(), 100);
+
+  // الخطة: 300 قطعة => محتاج 165 كجم والموجود 100 => عجز 65
+  await req('POST', '/plan', { type: 'month', date: '2026-09-10', product_id: pid('PB-1'), qty: '300' });
+  const plan = (await req('GET', '/plan?type=month&date=2026-09-10')).text;
+  assert.match(plan, /الخامات المطلوبة[\s\S]*خامة BOM تجريبية<\/td><td><b>165<\/b>[\s\S]*<td class="warn">65 /);
+
+  // نسخ BOM لمنتج تاني
+  await req('POST', `/bom/${pid('PB-2')}/copy`, { from: pid('PB-1') });
+  assert.equal(db.prepare('SELECT qty FROM bom_lines WHERE product_id=?').get(pid('PB-2')).qty, 0.5);
+  // استيراد BOM من Excel: سطر بيتضاف، وخامة مش موجودة بتتعدّى
+  const bx = fs.readFileSync(path.join(__dirname, 'fixtures', 'bom-sample.xlsx'));
+  assert.deepEqual(JSON.parse((await req('POST', '/r/bom/import', null, bx)).text), { ok: true, added: 1, updated: 0, skipped: 1 });
+  assert.equal(db.prepare('SELECT scrap_pct FROM bom_lines WHERE product_id=?').get(pid('PB-3')).scrap_pct, 5);
+
+  // إنتاج قديم قبل الـ BOM: إعادة الحساب من تاريخ
+  db.prepare("INSERT INTO production_logs (date, employee_id, machine_id, product_id, qty_produced, qty_scrap) VALUES ('2026-08-01', ?, ?, ?, 50, 0)").run(emp, mach, pid('PB-3'));
+  assert.equal(stock(), 100);
+  await req('POST', `/bom/${pid('PB-3')}/recalc`, { from: '2026-08-01' });
+  assert.equal(stock(), 89.5); // 50 × 0.2 × 1.05 = 10.5
+
+  // أمين المخزن يشوف الـ BOM بس مايعدّلش
+  const s = client();
+  await s('POST', '/login', { username: 'store', password: 'store123' });
+  assert.equal((await s('GET', `/bom/${pid('PB-1')}`)).status, 200);
+  assert.equal((await s('POST', `/bom/${pid('PB-1')}`, { material_id: mid, qty: '9' })).status, 403);
+});

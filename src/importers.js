@@ -215,4 +215,36 @@ importers.product_movements = {
   },
 };
 
+// BOM من Excel: كل صف = منتج + خامة + الكمية للقطعة
+importers.bom = {
+  title: 'استيراد BOM من Excel',
+  columnsHint: 'رقم القطعة (المنتج)، الخامة (كود أو اسم الخامة)، الكمية للقطعة، ونسبة الفاقد % لو موجودة',
+  matchHint: 'كل صف = خامة في منتج. المنتج بيتعرف برقم القطعة، والخامة بالكود أو الاسم. لو الخامة موجودة في الـ BOM بتتحدث، والصفوف اللي المنتج أو الخامة بتاعتها مش موجودين بتتعدّى.',
+  preview: [['code', 'رقم القطعة'], ['material', 'الخامة'], ['qty', 'الكمية للقطعة'], ['scrap_pct', 'نسبة الفاقد %']],
+  async parse(buffer) {
+    const rows = await readTable(buffer, {
+      code: ['part number', 'part no', 'رقم القطعة', 'كود المنتج', 'المنتج', 'product'],
+      material: ['الخامة', 'كود الخامة', 'اسم الخامة', 'المادة', 'material', 'raw material'],
+      qty: ['الكمية للقطعة', 'الكمية', 'الوزن', 'وزن القطعة', 'qty', 'quantity', 'qty per piece', 'weight'],
+      scrap_pct: ['نسبة الفاقد', 'الفاقد %', 'نسبة الفاقد %', 'scrap %', 'scrap'],
+    }, 'material');
+    return rows.filter((r) => clean(r.code) && clean(r.material) && toNum(r.qty) > 0)
+      .map((r) => ({ code: clean(r.code), material: clean(r.material), qty: toNum(r.qty), scrap_pct: toNum(r.scrap_pct) || 0 }));
+  },
+  importRows(db, list) {
+    const res = { added: 0, updated: 0, skipped: 0 };
+    db.transaction(() => {
+      for (const r of list) {
+        const p = db.prepare('SELECT id FROM products WHERE code=?').get(r.code);
+        const m = db.prepare('SELECT id FROM materials WHERE code=? OR name=?').get(r.material, r.material);
+        if (!p || !m) { res.skipped++; continue; }
+        const ex = db.prepare('SELECT id FROM bom_lines WHERE product_id=? AND material_id=?').get(p.id, m.id);
+        upsert(db, 'bom_lines', { product_id: p.id, material_id: m.id, qty: r.qty, scrap_pct: r.scrap_pct }, ex && ex.id);
+        res[ex ? 'updated' : 'added']++;
+      }
+    })();
+    return res;
+  },
+};
+
 module.exports = { importers };

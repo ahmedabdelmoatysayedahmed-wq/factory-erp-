@@ -8,6 +8,7 @@ const { ROLES, PERMS, can } = require('./roles');
 const { resources, STATUS, today } = require('./resources');
 const { LANGS, translator } = require('./i18n');
 const { productStock, getAlerts, clearAlertsCache, periodOf, shiftPeriod } = require('./stock');
+const { bomOf, requirements, applyConsumption } = require('./bom');
 
 const app = express();
 const prod = process.env.NODE_ENV === 'production';
@@ -261,7 +262,9 @@ app.get('/plan', need('production_plans'), (req, res) => {
   const suggest = Object.values(stock).filter((p) => p.low && !inPlan.has(p.id))
     .map((p) => ({ ...p, qty: Math.ceil((p.min * 2 - p.stock) / 50) * 50 }));
   const products = db.prepare("SELECT id, COALESCE(code || ' - ', '') || name label FROM products ORDER BY name").all();
-  res.render('plan', { per, lines, suggest, products, prev: shiftPeriod(per.type, per.start, -1), next: shiftPeriod(per.type, per.start, 1) });
+  const reqs = requirements(db, lines.map((l) => ({ product_id: l.product_id, qty: Math.max(0, l.qty_planned - l.produced) })));
+  reqs.noBom = reqs.noBom.map((id) => lines.find((l) => l.product_id === id)).filter(Boolean);
+  res.render('plan', { per, lines, suggest, products, reqs, prev: shiftPeriod(per.type, per.start, -1), next: shiftPeriod(per.type, per.start, 1) });
 });
 app.post('/plan', need('production_plans', 'edit'), (req, res) => {
   const per = planPeriod(req);
@@ -293,6 +296,57 @@ app.post('/plan/:id/delete', need('production_plans', 'edit'), (req, res) => {
   const l = db.prepare('SELECT * FROM production_plans WHERE id=?').get(req.params.id);
   db.prepare('DELETE FROM production_plans WHERE id=?').run(req.params.id);
   res.redirect(l ? `/plan?type=${l.period_type}&date=${l.period_start}` : '/plan');
+});
+
+// ---------- BOM (مكونات المنتج) ----------
+app.get('/bom', need('bom'), (req, res) => {
+  const q = (req.query.q || '').trim();
+  const only = req.query.only || '';
+  let rows = db.prepare(`SELECT p.id, p.code, p.name, (SELECT COUNT(*) FROM bom_lines b WHERE b.product_id=p.id) n FROM products p
+    WHERE (? = '' OR p.name LIKE ? OR p.code LIKE ?) ORDER BY p.name`).all(q, `%${q}%`, `%${q}%`);
+  const counts = { all: rows.length, with: rows.filter((p) => p.n).length };
+  if (only === 'with') rows = rows.filter((p) => p.n); else if (only === 'without') rows = rows.filter((p) => !p.n);
+  rows = rows.map((p) => ({ ...p, cost: p.n ? bomOf(db, p.id).cost : null }));
+  res.render('bom-list', { rows, q, only, counts });
+});
+app.get('/bom/:id', need('bom'), (req, res) => {
+  const p = db.prepare('SELECT * FROM products WHERE id=?').get(req.params.id);
+  if (!p) return res.status(404).render('error', { msg: 'السجل غير موجود' });
+  const materials = db.prepare("SELECT id, COALESCE(code || ' - ', '') || name label, unit FROM materials ORDER BY name").all();
+  const others = db.prepare(`SELECT p.id, COALESCE(p.code || ' - ', '') || p.name label FROM products p
+    WHERE p.id<>? AND EXISTS (SELECT 1 FROM bom_lines b WHERE b.product_id=p.id) ORDER BY p.name`).all(p.id);
+  const used = db.prepare('SELECT COALESCE(SUM(qty_produced + qty_scrap),0) s FROM production_logs WHERE product_id=?').get(p.id).s;
+  res.render('bom', { p, ...bomOf(db, p.id), materials, others, used });
+});
+app.post('/bom/:id', need('bom', 'edit'), (req, res) => {
+  const pid = Number(req.params.id);
+  const qty = Number(req.body.qty), scrap = req.body.scrap_pct === '' || req.body.scrap_pct === undefined ? 0 : Number(req.body.scrap_pct);
+  if (!req.body.material_id || !(qty > 0) || !(scrap >= 0)) flash(req, 'err', 'اختار الخامة واكتب كمية أكبر من صفر');
+  else {
+    db.prepare(`INSERT INTO bom_lines (product_id, material_id, qty, scrap_pct, notes) VALUES (?,?,?,?,?)
+      ON CONFLICT(product_id, material_id) DO UPDATE SET qty=excluded.qty, scrap_pct=excluded.scrap_pct, notes=COALESCE(excluded.notes, notes)`)
+      .run(pid, Number(req.body.material_id), qty, scrap, req.body.notes || null);
+    flash(req, 'ok', 'تم الحفظ');
+  }
+  res.redirect(`/bom/${pid}`);
+});
+app.post('/bom/:id/copy', need('bom', 'edit'), (req, res) => {
+  const n = db.prepare(`INSERT INTO bom_lines (product_id, material_id, qty, scrap_pct, notes)
+    SELECT ?, material_id, qty, scrap_pct, notes FROM bom_lines WHERE product_id=? AND true
+    ON CONFLICT(product_id, material_id) DO UPDATE SET qty=excluded.qty, scrap_pct=excluded.scrap_pct`).run(Number(req.params.id), Number(req.body.from)).changes;
+  flash(req, 'ok', ['تم نسخ {0} خامة', n]);
+  res.redirect(`/bom/${req.params.id}`);
+});
+app.post('/bom/:id/line/:line/delete', need('bom', 'edit'), (req, res) => {
+  db.prepare('DELETE FROM bom_lines WHERE id=? AND product_id=?').run(req.params.line, req.params.id);
+  res.redirect(`/bom/${req.params.id}`);
+});
+// إعادة حساب استهلاك الخامات لإنتاج متسجل قبل ما الـ BOM يتعمل
+app.post('/bom/:id/recalc', need('bom', 'edit'), (req, res) => {
+  const ids = db.prepare('SELECT id FROM production_logs WHERE product_id=? AND date >= ?').all(req.params.id, req.body.from || '0000-00-00');
+  db.transaction(() => ids.forEach((r) => applyConsumption(db, r.id)))();
+  flash(req, 'ok', ['تم حساب استهلاك الخامات لـ {0} تسجيل إنتاج', ids.length]);
+  res.redirect(`/bom/${req.params.id}`);
 });
 
 // ---------- التنبيهات ----------
@@ -429,12 +483,16 @@ app.post(['/r/:res', '/r/:res/:id'], getRes, needRes('edit'), (req, res) => {
     r.beforeSave && r.beforeSave(row, db);
     const cols = Object.keys(row);
     try {
-      if (id) db.prepare(`UPDATE ${req.rk} SET ${cols.map((c) => `${c}=?`).join(',')} WHERE id=?`).run(...cols.map((c) => row[c]), id);
-      else {
-        const all = ['stock_movements', 'production_logs', 'product_movements'].includes(req.rk) ? [...cols, 'user_id'] : cols;
-        const vals = cols.map((c) => row[c]); if (all.length > cols.length) vals.push(req.session.user.id);
-        db.prepare(`INSERT INTO ${req.rk} (${all.join(',')}) VALUES (${all.map(() => '?').join(',')})`).run(...vals);
-      }
+      db.transaction(() => {
+        let rowId = id;
+        if (id) db.prepare(`UPDATE ${req.rk} SET ${cols.map((c) => `${c}=?`).join(',')} WHERE id=?`).run(...cols.map((c) => row[c]), id);
+        else {
+          const all = ['stock_movements', 'production_logs', 'product_movements'].includes(req.rk) ? [...cols, 'user_id'] : cols;
+          const vals = cols.map((c) => row[c]); if (all.length > cols.length) vals.push(req.session.user.id);
+          rowId = Number(db.prepare(`INSERT INTO ${req.rk} (${all.join(',')}) VALUES (${all.map(() => '?').join(',')})`).run(...vals).lastInsertRowid);
+        }
+        r.afterSave && r.afterSave(db, rowId);
+      })();
       flash(req, 'ok', 'تم الحفظ بنجاح');
       return res.redirect(req.body.again ? `/r/${req.rk}/new` : `/r/${req.rk}`);
     } catch (e) {
@@ -469,7 +527,10 @@ app.post('/r/upcoming_molds/:id/receive', need('molds', 'edit'), (req, res) => {
 
 app.post('/r/:res/:id/delete', getRes, needRes('edit'), (req, res) => {
   try {
-    db.prepare(`DELETE FROM ${req.rk} WHERE id=?`).run(req.params.id);
+    db.transaction(() => {
+      req.r.beforeDelete && req.r.beforeDelete(db, Number(req.params.id));
+      db.prepare(`DELETE FROM ${req.rk} WHERE id=?`).run(req.params.id);
+    })();
     flash(req, 'ok', 'تم الحذف');
   } catch (e) {
     flash(req, 'err', e.message.includes('FOREIGN KEY') ? 'لا يمكن الحذف لأن السجل مرتبط ببيانات أخرى' : e.message);

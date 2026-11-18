@@ -5,7 +5,7 @@ const MOLDS = require('./demo-molds');
 const OLD_FAKE_MOLDS = ['إسطمبة غطاء 38', 'إسطمبة جركن 5L', 'إسطمبة برطمان', 'إسطمبة غطاء 28 (احتياطي)'];
 // أسامي الموظفين الوهميين اللي كانت في النسخ القديمة من البيانات التجريبية
 const OLD_FAKE = ['محمد علي', 'أحمد حسن', 'محمود سيد', 'كريم سمير', 'مصطفى عادل', 'عمرو خالد', 'إسلام فتحي', 'هاني رمضان', 'سامح نبيل', 'ياسر جمال'];
-const TABLES = ['production_plans', 'product_movements', 'upcoming_molds', 'production_logs', 'stock_movements', 'attendance', 'leaves', 'production_orders', 'molds', 'assets', 'materials', 'products', 'machines'];
+const TABLES = ['bom_lines', 'production_plans', 'product_movements', 'upcoming_molds', 'production_logs', 'stock_movements', 'attendance', 'leaves', 'production_orders', 'molds', 'assets', 'materials', 'products', 'machines'];
 
 // مسح البيانات (المستخدمين والإعدادات مابيتمسحوش)
 // keepMolds: بيسيب الإسطمبات ومنتجاتها والإسطمبات القادمة (بيشيل بس عداد الإنتاج التجريبي منها)
@@ -52,12 +52,14 @@ function seedDemo(db, { keepEmployees = false, resetEmployees = false } = {}) {
     const prod = USED.map((i) => allProducts[i]);
     const molds = USED.map((i) => allMolds[i]);
     // «الإسطمبات القادمة» بتفضل فاضية - بتتملى بالاستيراد من Excel
-    const mats = [['بولي إيثيلين HDPE', 'كجم', 1000, 52], ['بولي بروبلين PP', 'كجم', 800, 48], ['ماستر باتش أزرق', 'كجم', 30, 180], ['ماستر باتش أبيض', 'كجم', 30, 150], ['كراتين تعبئة', 'كرتونة', 200, 9]]
+    const mats = [['بولي بروبلين PP', 'كجم', 1500, 48], ['بولي بروبلين + تالك PP-T20', 'كجم', 800, 55], ['ماستر باتش أسود', 'كجم', 100, 180], ['ماستر باتش أبيض', 'كجم', 30, 150], ['كراتين تعبئة', 'كرتونة', 200, 9]]
       .map(([name, unit, min, cost], i) => ins('materials', { code: 'R' + (i + 1), name, unit, min_stock: min, unit_cost: cost, supplier: i < 2 ? 'مورد خامات' : 'مورد محلي' }));
-    [[0, 5000], [1, 3000], [2, 60], [3, 100], [4, 1500]].forEach(([m, q]) => ins('stock_movements', { date: day(14), material_id: mats[m], type: 'in', qty: q, reference: 'رصيد افتتاحي' }));
+    [[0, 12000], [1, 6000], [2, 280], [3, 100], [4, 1300]].forEach(([m, q]) => ins('stock_movements', { date: day(14), material_id: mats[m], type: 'in', qty: q, reference: 'رصيد افتتاحي' }));
     const orders = [['PO-101', 0, 60000, 14, 2, 'in_progress'], ['PO-102', 1, 12000, 10, 3, 'in_progress'], ['PO-103', 2, 8000, 4, -6, 'open']]
       .map(([code, p, q, s, d, status]) => ins('production_orders', { code, product_id: prod[p], qty_planned: q, start_date: day(s), due_date: day(d), status }));
-    [[0, 0, 2600], [1, 1, 2300], [2, 0, 25], [3, 2, 40], [4, 0, 1350]].forEach(([m, o, q]) => ins('stock_movements', { date: day(7), material_id: mats[m], type: 'out', qty: q, order_id: orders[o], reference: 'إذن صرف ' + (500 + m) }));
+    // BOM للمنتجات الشغالة: [خامة، كمية للقطعة، فاقد %]
+    const BOM = [[[0, 0.30, 3], [2, 0.006, 0], [4, 0.025, 0]], [[1, 0.45, 3], [2, 0.009, 0], [4, 0.05, 0]], [[0, 0.12, 4], [2, 0.0024, 0], [4, 0.01, 0]]];
+    BOM.forEach((lines, i) => lines.forEach(([m, q, sp]) => ins('bom_lines', { product_id: prod[i], material_id: mats[m], qty: q, scrap_pct: sp })));
 
     // 14 يوم حضور وإنتاج (من غير أيام الراحة الأسبوعية)
     const assign = [[0, 0, 0], [1, 0, 0], [2, 2, 2], [3, 1, 1], [4, 1, 1]]; // ماكينة، إسطمبة، أمر
@@ -91,6 +93,9 @@ function seedDemo(db, { keepEmployees = false, resetEmployees = false } = {}) {
     });
     [['شاحنة نقل ربع نقل', 'سيارات', 450000], ['ونش شوكة (كلارك)', 'معدات مناولة', 380000], ['كمبيوتر المخزن', 'أجهزة', 18000], ['كمبريسور هواء', 'معدات', 95000], ['ميزان إلكتروني 300 كجم', 'أجهزة قياس', 12000]]
       .forEach(([name, category, cost], i) => ins('assets', { code: 'A' + (i + 1), name, category, purchase_cost: cost, purchase_date: '2023-0' + (i + 2) + '-15', custodian_id: emps[i % emps.length].id, location: i === 0 ? 'الجراج' : 'المصنع', status: 'in_service' }));
+    // خصم الخامات للإنتاج التجريبي حسب الـ BOM
+    const { applyConsumption } = require('./bom');
+    for (const r of db.prepare('SELECT id FROM production_logs').all()) applyConsumption(db, r.id);
     count = emps.length;
     for (const f of MIGRATION_FLAGS) db.setSetting(f, '1');
   })();
