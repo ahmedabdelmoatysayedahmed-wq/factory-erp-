@@ -5,6 +5,7 @@ const fs = require('fs'); const os = require('os'); const path = require('path')
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'erp-'));
 process.env.DB_FILE = path.join(tmp, 'test.db');
 process.env.NO_BACKUP = '1';
+process.env.MAIL_TEST = '1'; // الإيميلات بتتكتب في الذاكرة بدل ما تتبعت
 const app = require('../src/app');
 let server, base;
 
@@ -572,5 +573,40 @@ test('shift sheet: hourly entry within 3 minutes, locked after, photo/video to u
     assert.ok(db.prepare('SELECT closed_at FROM shift_sheets WHERE id=?').get(sid).closed_at);
     assert.equal(db.prepare("SELECT COUNT(*) c FROM hourly_logs WHERE sheet_id=? AND status='missed'").get(sid).c, 9 + 12 - 0); // ساعات 3..11 نهاري + 12 ليلي
     assert.match((await req('GET', '/shifts?date=2026-10-05')).text, /SM-1/);
+  } finally { SH.setClock(null); }
+});
+
+test('shift report is emailed automatically once after each shift ends', async () => {
+  const db = require('../src/db');
+  const SH = require('../src/shifts');
+  const MAIL = require('../src/mailer');
+  const req = client();
+  await req('POST', '/login', { username: 'admin', password: 'admin123' });
+  await req('POST', '/settings/mail', { mail_enabled: '1', mail_to: 'boss@example.com', mail_user: 'factory@example.com', mail_pass: 'abcd efgh ijkl mnop' });
+  assert.equal(db.getSetting('mail_pass'), 'abcdefghijklmnop'); // المسافات اتشالت
+  const page = (await req('GET', '/settings')).text;
+  assert.match(page, /boss@example.com/); assert.doesNotMatch(page, /abcdefghijklmnop/); // الباسورد مابيظهرش
+  try {
+    SH.setClock(new Date(2026, 9, 5, 20, 3)); MAIL.resetRetry();
+    assert.equal(await MAIL.sendDueReports(db), 0); // الوردية خلصت 8، ولسه دقايق التسجيل
+    SH.setClock(new Date(2026, 9, 5, 20, 7));
+    assert.equal(await MAIL.sendDueReports(db), 1);
+    const m = MAIL.lastTest();
+    assert.deepEqual(m.to, ['boss@example.com']);
+    assert.match(m.subject, /تقرير الوردية النهاري - 2026-10-05/);
+    assert.match(m.html, /SM-1/); assert.match(m.html, /ساعات اتقفلت ماتسجلتش/); assert.match(m.html, /تغيير إسطمبة/);
+    assert.equal(await MAIL.sendDueReports(db), 0); // مرة واحدة بس
+    SH.setClock(new Date(2026, 9, 6, 8, 7));
+    assert.equal(await MAIL.sendDueReports(db), 1);
+    assert.match(MAIL.lastTest().subject, /الوردية الليلي - 2026-10-05/);
+    assert.match(db.getSetting('mail_last_sent'), /الوردية الليلي/);
+    // زرار الإيميل التجريبي
+    await req('POST', '/settings/mail-test', {});
+    assert.match(MAIL.lastTest().subject, /^\[تجربة\]/);
+    // لو الإرسال مقفول مفيش حاجة بتتبعت
+    await req('POST', '/settings/mail', { mail_to: 'boss@example.com', mail_user: 'factory@example.com' });
+    SH.setClock(new Date(2026, 9, 6, 20, 7));
+    assert.equal(await MAIL.sendDueReports(db), 0);
+    assert.equal(db.getSetting('mail_pass'), 'abcdefghijklmnop'); // الحفظ من غير باسورد مابيمسحوش
   } finally { SH.setClock(null); }
 });

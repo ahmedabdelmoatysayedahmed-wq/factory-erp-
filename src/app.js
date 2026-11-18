@@ -12,6 +12,7 @@ const { bomOf, requirements, applyConsumption } = require('./bom');
 const PB = require('./prebom');
 const MT = require('./maintenance');
 const SH = require('./shifts');
+const MAIL = require('./mailer');
 const fs = require('fs');
 
 const app = express();
@@ -217,7 +218,7 @@ app.post('/users', need('users', 'edit'), (req, res) => {
 // ---------- الإعدادات (مدير النظام) ----------
 const DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 app.get('/settings', need('users', 'edit'), (req, res) =>
-  res.render('settings', { DAYS, noEmployees: !db.prepare('SELECT 1 FROM employees LIMIT 1').get(), db_shift_start: SH.startHour(db), db_window: SH.windowMin(db) }));
+  res.render('settings', { DAYS, noEmployees: !db.prepare('SELECT 1 FROM employees LIMIT 1').get(), db_shift_start: SH.startHour(db), db_window: SH.windowMin(db), mail: { ...MAIL.cfg(db), pass: !!MAIL.cfg(db).pass, lastSent: db.getSetting('mail_last_sent'), lastError: db.getSetting('mail_last_error') } }));
 app.post('/settings', need('users', 'edit'), (req, res) => {
   const off = [].concat(req.body.weekly_off || []).map(Number).filter((n) => n >= 0 && n <= 6);
   db.setSetting('weekly_off', off.join(','));
@@ -227,6 +228,34 @@ app.post('/settings', need('users', 'edit'), (req, res) => {
   if (req.body.product_min_stock !== undefined && Number(req.body.product_min_stock) >= 0) db.setSetting('product_min_stock', Number(req.body.product_min_stock));
   flash(req, 'ok', 'تم الحفظ');
   res.redirect('/settings');
+});
+
+// إعدادات الإيميل
+app.post('/settings/mail', need('users', 'edit'), (req, res) => {
+  const b = req.body;
+  db.setSetting('mail_enabled', b.mail_enabled ? '1' : '0');
+  db.setSetting('mail_to', String(b.mail_to || '').trim());
+  db.setSetting('mail_host', String(b.mail_host || 'smtp.gmail.com').trim());
+  db.setSetting('mail_port', Number(b.mail_port) || 465);
+  db.setSetting('mail_user', String(b.mail_user || '').trim());
+  if (b.mail_pass) db.setSetting('mail_pass', String(b.mail_pass).replace(/\s+/g, '')); // الفاضي = سيب القديم
+  MAIL.resetRetry();
+  flash(req, 'ok', 'تم الحفظ'); res.redirect('/settings#mail');
+});
+// إيميل تجريبي: تقرير آخر وردية خلصت
+app.post('/settings/mail-test', need('users', 'edit'), async (req, res) => {
+  const at = SH.now(), today = SH.currentSheetDate(db, at);
+  const nightEnded = at.getHours() >= SH.startHour(db) && at.getHours() < SH.startHour(db) + 12;
+  const [y, m, d] = today.split('-').map(Number);
+  const r = nightEnded ? MAIL.buildShiftReport(db, SH.localDate(new Date(y, m - 1, d - 1)), 'night') : MAIL.buildShiftReport(db, today, 'day');
+  try {
+    await MAIL.send(db, { ...r, subject: '[تجربة] ' + r.subject });
+    flash(req, 'ok', ['اتبعت إيميل تجريبي لـ {0}', MAIL.cfg(db).to.join(', ')]);
+  } catch (e) {
+    const hint = /auth|535|534|Username and Password/i.test(e.message) ? ' (اتأكد من الإيميل وكلمة سر التطبيقات App Password)' : '';
+    flash(req, 'err', ['الإيميل ماتبعتش: {0}', e.message + hint]);
+  }
+  res.redirect('/settings#mail');
 });
 
 app.get('/password', (req, res) => res.render('password', { error: null }));
@@ -687,6 +716,10 @@ if (db.getSetting('hourly_v2') !== '1') {
   if (db.getSetting('hourly_window_min') === '3') db.setSetting('hourly_window_min', '5');
   db.setSetting('hourly_v2', '1');
 }
+// كل دقيقة: تقرير الوردية بيتبعت بالإيميل أوتوماتيك بعد ما الوردية تخلص
+const runMail = () => MAIL.sendDueReports(db).catch((e) => console.error('Mail failed:', e.message));
+setInterval(runMail, 60e3).unref();
+
 // كل دقيقة: الساعات اللي عدّى وقت تسجيلها بتتقفل "ماشتغلش"
 const runMissed = () => { try { if (SH.markMissed(db)) clearAlertsCache(); } catch (e) { console.error('Hourly check failed:', e.message); } };
 runMissed();
