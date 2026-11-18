@@ -217,12 +217,13 @@ app.post('/users', need('users', 'edit'), (req, res) => {
 // ---------- الإعدادات (مدير النظام) ----------
 const DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 app.get('/settings', need('users', 'edit'), (req, res) =>
-  res.render('settings', { DAYS, noEmployees: !db.prepare('SELECT 1 FROM employees LIMIT 1').get(), db_shift_start: SH.startHour(db), db_window: SH.windowMin(db) }));
+  res.render('settings', { DAYS, noEmployees: !db.prepare('SELECT 1 FROM employees LIMIT 1').get(), db_shift_start: SH.startHour(db), db_window: SH.windowMin(db), db_proof: SH.proofMin(db) }));
 app.post('/settings', need('users', 'edit'), (req, res) => {
   const off = [].concat(req.body.weekly_off || []).map(Number).filter((n) => n >= 0 && n <= 6);
   db.setSetting('weekly_off', off.join(','));
   db.setSetting('leaves_enabled', req.body.leaves_enabled ? '1' : '0');
   if (Number(req.body.hourly_window_min) > 0) db.setSetting('hourly_window_min', Number(req.body.hourly_window_min));
+  if (Number(req.body.proof_window_min) > 0) db.setSetting('proof_window_min', Number(req.body.proof_window_min));
   if (req.body.shift_start_hour !== undefined && Number(req.body.shift_start_hour) >= 0 && Number(req.body.shift_start_hour) <= 23) db.setSetting('shift_start_hour', Number(req.body.shift_start_hour));
   if (req.body.product_min_stock !== undefined && Number(req.body.product_min_stock) >= 0) db.setSetting('product_min_stock', Number(req.body.product_min_stock));
   flash(req, 'ok', 'تم الحفظ');
@@ -452,7 +453,7 @@ function sheetView(sh) {
   const slots = Array.from({ length: SH.SLOTS }, (x, i) => {
     const st = SH.slotState(db, sh, i, entries[i]);
     const h = (SH.startHour(db) + i) % 24;
-    return { i, from: SH.hour12(h), to: SH.hour12(h + 1), e: entries[i] || null, ...st, deadline: st.deadline ? st.deadline.getTime() : null };
+    return { i, from: SH.hour12(h), to: SH.hour12(h + 1), e: entries[i] || null, ...st, deadline: st.deadline ? st.deadline.getTime() : null, proofDeadline: st.proofDeadline ? st.proofDeadline.getTime() : null };
   });
   const sum = (a) => a.reduce((t, x) => ({ qty: t.qty + (x.e ? x.e.qty || 0 : 0), scrap: t.scrap + (x.e ? x.e.scrap || 0 : 0), missed: t.missed + (x.e && x.e.status === 'missed' ? 1 : 0) }), { qty: 0, scrap: 0, missed: 0 });
   return { slots, day: sum(slots.slice(0, 12)), night: sum(slots.slice(12)), downtimes: db.prepare('SELECT * FROM sheet_downtimes WHERE sheet_id=? ORDER BY id').all(sh.id) };
@@ -488,7 +489,7 @@ app.post('/shifts', need('shifts', 'edit'), (req, res) => {
 app.get('/shifts/:id', need('shifts'), (req, res) => {
   const sh = db.prepare(`${sheetQ} WHERE s.id=?`).get(req.params.id);
   if (!sh) return res.status(404).render('error', { msg: 'السجل غير موجود' });
-  res.render('shift', { sh, ...sheetView(sh), ...pickLists(), W: SH.windowMin(db), STATUS });
+  res.render('shift', { sh, ...sheetView(sh), ...pickLists(), W: SH.windowMin(db), P: SH.proofMin(db), STATUS });
 });
 app.post('/shifts/:id', need('shifts', 'edit'), (req, res) => {
   const b = req.body;
@@ -537,14 +538,15 @@ app.post('/shifts/:id/slot/:i', need('hourly', 'edit'), express.raw({ type: ['im
   if (st.state === 'off' && !boss) return fail('المحضر مش مفتوح للساعة دي');
   let status, proof = null;
   if (st.state === 'open') status = 'on_time';
-  else if (isFile) {
+  else if (isFile && (st.state === 'proof' || boss)) {
     const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/heic': 'heic', 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm', 'video/3gpp': '3gp' }[req.get('content-type')];
     if (!ext) return fail('نوع الملف ده مش مدعوم. ارفع صورة أو فيديو');
     proof = `proof-${sh.id}-${i}-${Date.now()}.${ext}`;
     fs.writeFileSync(require('path').join(uploadsDir(), proof), req.body);
     status = 'late_proof';
   } else if (boss) status = 'edited';
-  else return fail(['الوقت عدّى ({0} دقايق بعد الساعة). الساعة اتقفلت واتحسبت ماشتغلش، ومش هتتسجل غير برفع صورة أو فيديو', SH.windowMin(db)]);
+  else if (st.state === 'proof') return fail(['الوقت عدّى ({0} دقايق بعد الساعة). الساعة اتقفلت واتحسبت ماشتغلش، وقدامك {1} دقايق ترفع صورة أو فيديو علشان تتحسب', SH.windowMin(db), SH.proofMin(db)]);
+  else return fail('الساعة دي اتقفلت نهائي (عدّى وقت رفع الصورة/الفيديو). كلّم المشرف');
   const emp = toId(f.employee_id) || (entry && entry.employee_id) || (req.session.user.employee_id) || (i < 12 ? sh.day_worker_id : sh.night_worker_id);
   const tech = toId(f.tech_id) || (entry && entry.tech_id) || (i < 12 ? sh.day_tech_id : sh.night_tech_id);
   db.transaction(() => {
@@ -570,9 +572,10 @@ app.get('/floor', need('hourly'), (req, res) => {
   const sheets = db.prepare(`${sheetQ} WHERE s.date=? AND s.closed_at IS NULL ORDER BY m.code`).all(date).map((sh) => {
     const v = sheetView(sh);
     return { ...sh, v, open: v.slots.find((s) => s.state === 'open'), running: v.slots.find((s) => s.state === 'running'),
-      missed: v.slots.filter((s) => s.e && s.e.status === 'missed') };
+      proof: v.slots.filter((s) => s.e && s.e.status === 'missed' && s.state === 'proof'),
+      locked: v.slots.filter((s) => s.e && s.e.status === 'missed' && s.state === 'missed') };
   });
-  res.render('floor', { sheets, date, W: SH.windowMin(db), emps: pickLists().emps, serverNow: SH.now().getTime() });
+  res.render('floor', { sheets, date, W: SH.windowMin(db), P: SH.proofMin(db), emps: pickLists().emps, serverNow: SH.now().getTime() });
 });
 
 // ---------- الصيانة ----------

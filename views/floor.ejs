@@ -6,7 +6,7 @@
 <% for (const s of sheets) { %>
   <div class="card fl <%= s.open ? 'fl-open' : '' %>">
     <div class="fl-head"><b><%= s.mcode %></b> <%= s.mname %><span class="muted"><%= s.pname || '' %></span></div>
-    <div class="fl-strip"><% for (const x of s.v.slots) { %><i class="st-<%= x.e && x.e.status === 'missed' ? 'missed' : x.state %>" title="<%= x.from %>-<%= x.to %>"></i><% } %></div>
+    <div class="fl-strip"><% for (const x of s.v.slots) { %><i class="st-<%= x.e && x.e.status === 'missed' ? (x.state === 'proof' ? 'proof' : 'missed') : x.state %>" title="<%= x.from %>-<%= x.to %>"></i><% } %></div>
     <% if (s.open) { %>
       <form class="fl-form" onsubmit="return send(event, <%= s.id %>, <%= s.open.i %>, false)">
         <div class="fl-q"><%= t('سجّل إنتاج الساعة') %> <b><%= s.open.from %> → <%= s.open.to %></b>
@@ -17,19 +17,20 @@
         <button class="btn primary"><%= t('حفظ') %></button>
       </form>
     <% } else if (s.running) { %>
-      <p class="fl-wait">⏳ <%= t(['الساعة {0} → {1} شغالة. سجّلها أول ما تخلص (عندك {2} دقايق).', s.running.from, s.running.to, W]) %></p>
+      <p class="fl-wait">⏳ <%= t(['الساعة {0} → {1} شغالة. سجّلها أول ما تخلص (عندك {2} دقايق، وبعدها {3} دقايق بصورة أو فيديو).', s.running.from, s.running.to, W, P]) %></p>
     <% } %>
-    <% if (s.missed.length) { %>
-      <details class="fl-late"><summary>🔒 <%= t(['{0} ساعة اتقفلت ماتسجلتش. ارفع صورة أو فيديو علشان تتحسب', s.missed.length]) %></summary>
-      <% for (const x of s.missed) { %>
-        <form class="fl-form" onsubmit="return send(event, <%= s.id %>, <%= x.i %>, true)">
-          <div class="fl-q"><%= x.from %> → <%= x.to %></div>
-          <input name="qty" type="number" min="0" inputmode="numeric" placeholder="<%= t('عدد الإنتاج') %>" required>
-          <input name="scrap" type="number" min="0" inputmode="numeric" placeholder="<%= t('عدد التوالف') %>">
-          <input name="proof" type="file" accept="image/*,video/*" capture="environment" required>
-          <button class="btn"><%= t('رفع وحفظ') %></button>
-        </form>
-      <% } %></details>
+    <% for (const x of s.proof) { %>
+      <form class="fl-form fl-proof" onsubmit="return send(event, <%= s.id %>, <%= x.i %>, true)">
+        <div class="fl-q">🔒 <%= t('الساعة') %> <b><%= x.from %> → <%= x.to %></b> <%= t('اتقفلت. ارفع صورة أو فيديو علشان تتحسب') %>
+          <span class="countdown" data-deadline="<%= x.proofDeadline %>"></span></div>
+        <input name="qty" type="number" min="0" inputmode="numeric" placeholder="<%= t('عدد الإنتاج') %>" required>
+        <input name="scrap" type="number" min="0" inputmode="numeric" placeholder="<%= t('عدد التوالف') %>">
+        <input name="proof" type="file" accept="image/*,video/*" capture="environment" required>
+        <button class="btn"><%= t('رفع وحفظ') %></button>
+      </form>
+    <% } %>
+    <% if (s.locked.length) { %>
+      <p class="fl-locked">⛔ <%= t(['{0} ساعة اتقفلت نهائي واتحسبت ماشتغلش. المشرف بس يقدر يعدّلها', s.locked.length]) %></p>
     <% } %>
   </div>
 <% } %>

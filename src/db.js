@@ -133,7 +133,7 @@ addColumn('production_orders', 'priority', "TEXT DEFAULT 'normal'");
 for (const c of ['part_no', 'oem_no', 'material', 'steel', 'runner', 't0_date']) addColumn('upcoming_molds', c, 'TEXT');
 
 // الإعدادات الافتراضية: الجمعة راحة أسبوعية، وقسم الإجازات مقفول
-const defaults = { weekly_off: '5', leaves_enabled: '0', product_min_stock: '100', shift_start_hour: '8', hourly_window_min: '3' };
+const defaults = { weekly_off: '5', leaves_enabled: '0', product_min_stock: '100', shift_start_hour: '8', hourly_window_min: '3', proof_window_min: '5' };
 for (const [k, v] of Object.entries(defaults)) db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run(k, v);
 
 db.getSettings = () => {

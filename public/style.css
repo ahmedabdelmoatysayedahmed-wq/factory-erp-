@@ -156,5 +156,6 @@ tr.total td{border-top:2px solid var(--line);background:#fafbfc}
 .fl-strip .st-done{background:#3aa76d}.fl-strip .st-missed{background:#e03131}.fl-strip .st-open{background:#f0a020}.fl-strip .st-running{background:#7aa7e8}
 .fl-form{display:grid;gap:8px}.fl-form input{font-size:18px;padding:10px}.fl-form .btn{font-size:17px;padding:10px}
 .fl-q{font-size:15px}.countdown{font-weight:700;color:#c05621;margin-inline-start:8px;font-size:18px}
-.fl-wait{margin:0;color:var(--muted)}.fl-late summary{cursor:pointer;color:var(--bad)}
+.fl-wait{margin:0;color:var(--muted)}.fl-proof{border-top:1px dashed #f0b4ab;padding-top:8px}.fl-locked{margin:0;color:var(--bad);font-weight:600}
+.fl-strip .st-proof{background:#e8590c}.fl-late summary{cursor:pointer;color:var(--bad)}
 @media print{.sh{font-size:11px}.sh-grid th,.sh-grid td{padding:2px 4px}.sh-grid tr td{background:#fff!important;color:#000!important}}
