@@ -4,6 +4,7 @@
   <p><%= t('اختار ملف Excel (.xlsx). الأعمدة دي بتتقري لو موجودة، وترتيبها مش مهم:') %></p>
   <p class="muted"><%= t(imp.columnsHint) %></p>
   <p class="muted"><%= t(imp.matchHint) %></p>
+  <% if (imp.template) { %><p><a class="btn" href="<%= imp.template %>" download>⬇️ <%= t('حمّل الشيت النموذجي') %></a></p><% } %>
   <label><%= t('ملف Excel') %><input type="file" id="file" accept=".xlsx"></label>
   <div id="msg"></div>
   <div class="table-wrap" id="preview"></div>

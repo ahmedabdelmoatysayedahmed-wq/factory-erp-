@@ -320,3 +320,31 @@ test('BOM: material cost, automatic consumption on production, plan requirements
   assert.equal((await s('GET', `/bom/${pid('PB-1')}`)).status, 200);
   assert.equal((await s('POST', `/bom/${pid('PB-1')}`, { material_id: mid, qty: '9' })).status, 403);
 });
+
+test('Excel templates for materials and BOM import correctly', async () => {
+  const db = require('../src/db');
+  const { materialStock } = require('../src/bom');
+  const req = client();
+  await req('POST', '/login', { username: 'admin', password: 'admin123' });
+  const tpl = (f) => fs.readFileSync(path.join(__dirname, '..', 'public', 'templates', f));
+  const fx = (f) => fs.readFileSync(path.join(__dirname, 'fixtures', f));
+  // التمبليت نفسه بيتحمل من البرنامج، ولو اتستورد فاضي بيقول مفيش بيانات
+  assert.equal((await req('GET', '/templates/bom-template.xlsx')).status, 200);
+  assert.match((await req('GET', '/r/materials/import')).text, /materials-template\.xlsx/);
+  assert.equal(JSON.parse((await req('POST', '/r/materials/import', null, tpl('materials-template.xlsx'))).text).ok, false);
+  assert.equal(JSON.parse((await req('POST', '/r/bom/import', null, tpl('bom-template.xlsx'))).text).ok, false);
+
+  // شيت الخامات بعد ما اتملى: خامتين، والرصيد بيتظبط على الشيت
+  assert.deepEqual(JSON.parse((await req('POST', '/r/materials/import', null, fx('materials-filled.xlsx'))).text), { ok: true, added: 2, updated: 0 });
+  const m1 = db.prepare("SELECT * FROM materials WHERE code='TM1'").get();
+  assert.equal(m1.unit_cost, 40);
+  assert.equal(materialStock(db)[m1.id], 1000);
+  // استيراده تاني بيحدّث ومش بيكرر، والرصيد يفضل 1000
+  assert.deepEqual(JSON.parse((await req('POST', '/r/materials/import', null, fx('materials-filled.xlsx'))).text), { ok: true, added: 0, updated: 2 });
+  assert.equal(materialStock(db)[m1.id], 1000);
+
+  // شيت الـ BOM بعد ما اتملى: سطرين لأول منتج (بالكود وبالاسم)، والصفوف الفاضية بتتجاهل
+  assert.deepEqual(JSON.parse((await req('POST', '/r/bom/import', null, fx('bom-filled.xlsx'))).text), { ok: true, added: 2, updated: 0, skipped: 0 });
+  const pid = db.prepare("SELECT id FROM products WHERE code='ANMBBS027 RA'").get().id;
+  assert.equal(db.prepare('SELECT qty FROM bom_lines WHERE product_id=? AND material_id=?').get(pid, m1.id).qty, 0.3);
+});

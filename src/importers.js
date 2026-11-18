@@ -215,9 +215,51 @@ importers.product_movements = {
   },
 };
 
+// الخامات من Excel: إضافة أو تحديث بالكود (أو الاسم)، والرصيد الحالي بيتظبط بحركة تسوية
+importers.materials = {
+  title: 'استيراد الخامات من Excel',
+  template: '/templates/materials-template.xlsx',
+  columnsHint: 'الكود، اسم الخامة، الوحدة، حد الطلب، سعر الوحدة، المورد، الرصيد الحالي',
+  matchHint: 'لو الخامة موجودة (نفس الكود أو الاسم) بياناتها بتتحدث. ولو كتبت الرصيد الحالي، البرنامج بيعمل حركة تسوية علشان الرصيد يبقى زي الشيت بالظبط.',
+  preview: [['code', 'الكود'], ['name', 'اسم الخامة'], ['unit', 'الوحدة'], ['min_stock', 'حد الطلب'], ['unit_cost', 'سعر الوحدة'], ['stock', 'الرصيد الحالي']],
+  async parse(buffer) {
+    const rows = await readTable(buffer, {
+      code: ['الكود', 'كود', 'كود الخامة', 'code'],
+      name: ['اسم الخامة', 'الخامة', 'الاسم', 'المادة', 'name', 'material'],
+      unit: ['الوحدة', 'unit'],
+      min_stock: ['حد الطلب', 'الحد الأدنى', 'min stock', 'reorder level'],
+      unit_cost: ['سعر الوحدة', 'السعر', 'التكلفة', 'unit cost', 'price'],
+      supplier: ['المورد', 'supplier'],
+      stock: ['الرصيد الحالي', 'الرصيد', 'الكمية', 'stock', 'balance', 'qty'],
+    }, 'name');
+    return rows.filter((r) => clean(r.name)).map((r) => ({
+      code: clean(r.code), name: clean(r.name), unit: clean(r.unit), min_stock: toNum(r.min_stock),
+      unit_cost: toNum(r.unit_cost), supplier: clean(r.supplier), stock: toNum(r.stock),
+    }));
+  },
+  importRows(db, list) {
+    const res = { added: 0, updated: 0 };
+    const d = new Date().toISOString().slice(0, 10);
+    db.transaction(() => {
+      for (const { stock, ...m } of list) {
+        const ex = (m.code && db.prepare('SELECT id FROM materials WHERE code=?').get(m.code)) || db.prepare('SELECT id FROM materials WHERE name=?').get(m.name);
+        const id = upsert(db, 'materials', m, ex && ex.id);
+        res[ex ? 'updated' : 'added']++;
+        if (stock !== null) {
+          const cur = db.prepare("SELECT COALESCE(SUM(CASE WHEN type='out' THEN -qty ELSE qty END),0) s FROM stock_movements WHERE material_id=?").get(id).s;
+          const diff = Math.round((stock - cur) * 1000) / 1000;
+          if (diff) db.prepare("INSERT INTO stock_movements (date, material_id, type, qty, reference) VALUES (?,?,'adjust',?,'رصيد من استيراد Excel')").run(d, id, diff);
+        }
+      }
+    })();
+    return res;
+  },
+};
+
 // BOM من Excel: كل صف = منتج + خامة + الكمية للقطعة
 importers.bom = {
   title: 'استيراد BOM من Excel',
+  template: '/templates/bom-template.xlsx',
   columnsHint: 'رقم القطعة (المنتج)، الخامة (كود أو اسم الخامة)، الكمية للقطعة، ونسبة الفاقد % لو موجودة',
   matchHint: 'كل صف = خامة في منتج. المنتج بيتعرف برقم القطعة، والخامة بالكود أو الاسم. لو الخامة موجودة في الـ BOM بتتحدث، والصفوف اللي المنتج أو الخامة بتاعتها مش موجودين بتتعدّى.',
   preview: [['code', 'رقم القطعة'], ['material', 'الخامة'], ['qty', 'الكمية للقطعة'], ['scrap_pct', 'نسبة الفاقد %']],
