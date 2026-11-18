@@ -5,7 +5,7 @@ const MOLDS = require('./demo-molds');
 const OLD_FAKE_MOLDS = ['إسطمبة غطاء 38', 'إسطمبة جركن 5L', 'إسطمبة برطمان', 'إسطمبة غطاء 28 (احتياطي)'];
 // أسامي الموظفين الوهميين اللي كانت في النسخ القديمة من البيانات التجريبية
 const OLD_FAKE = ['محمد علي', 'أحمد حسن', 'محمود سيد', 'كريم سمير', 'مصطفى عادل', 'عمرو خالد', 'إسلام فتحي', 'هاني رمضان', 'سامح نبيل', 'ياسر جمال'];
-const TABLES = ['bom_lines', 'production_plans', 'product_movements', 'upcoming_molds', 'production_logs', 'stock_movements', 'attendance', 'leaves', 'production_orders', 'molds', 'assets', 'materials', 'products', 'machines'];
+const TABLES = ['maintenance_orders', 'maintenance_plans', 'bom_lines', 'production_plans', 'product_movements', 'upcoming_molds', 'production_logs', 'stock_movements', 'attendance', 'leaves', 'production_orders', 'molds', 'assets', 'materials', 'products', 'machines'];
 
 // مسح البيانات (المستخدمين والإعدادات مابيتمسحوش)
 // keepMolds: بيسيب الإسطمبات ومنتجاتها والإسطمبات القادمة (بيشيل بس عداد الإنتاج التجريبي منها)
@@ -56,7 +56,8 @@ function seedDemo(db, { keepEmployees = false, resetEmployees = false } = {}) {
       .map(([name, unit, min, cost], i) => ins('materials', { code: 'R' + (i + 1), name, unit, min_stock: min, unit_cost: cost, supplier: i < 2 ? 'مورد خامات' : 'مورد محلي' }));
     [[0, 12000], [1, 6000], [2, 280], [3, 100], [4, 1300]].forEach(([m, q]) => ins('stock_movements', { date: day(14), material_id: mats[m], type: 'in', qty: q, reference: 'رصيد افتتاحي' }));
     const orders = [['PO-101', 0, 60000, 14, 2, 'in_progress'], ['PO-102', 1, 12000, 10, 3, 'in_progress'], ['PO-103', 2, 8000, 4, -6, 'open']]
-      .map(([code, p, q, s, d, status]) => ins('production_orders', { code, product_id: prod[p], qty_planned: q, start_date: day(s), due_date: day(d), status }));
+      .map(([code, p, q, s, d, status], i) => ins('production_orders', { code, product_id: prod[p], qty_planned: q, start_date: day(s), due_date: day(d), status,
+        machine_id: mach[[0, 3, 2][i]], mold_id: molds[p], priority: ['high', 'normal', 'normal'][i] }));
     // BOM للمنتجات الشغالة: [خامة، كمية للقطعة، فاقد %]
     const BOM = [[[0, 0.30, 3], [2, 0.006, 0], [4, 0.025, 0]], [[1, 0.45, 3], [2, 0.009, 0], [4, 0.05, 0]], [[0, 0.12, 4], [2, 0.0024, 0], [4, 0.01, 0]]];
     BOM.forEach((lines, i) => lines.forEach(([m, q, sp]) => ins('bom_lines', { product_id: prod[i], material_id: mats[m], qty: q, scrap_pct: sp })));
@@ -93,9 +94,25 @@ function seedDemo(db, { keepEmployees = false, resetEmployees = false } = {}) {
     });
     [['شاحنة نقل ربع نقل', 'سيارات', 450000], ['ونش شوكة (كلارك)', 'معدات مناولة', 380000], ['كمبيوتر المخزن', 'أجهزة', 18000], ['كمبريسور هواء', 'معدات', 95000], ['ميزان إلكتروني 300 كجم', 'أجهزة قياس', 12000]]
       .forEach(([name, category, cost], i) => ins('assets', { code: 'A' + (i + 1), name, category, purchase_cost: cost, purchase_date: '2023-0' + (i + 2) + '-15', custodian_id: emps[i % emps.length].id, location: i === 0 ? 'الجراج' : 'المصنع', status: 'in_service' }));
+    // الصيانة: خطط وقائية للماكينات + عطل اتصلح + عطل مفتوح على M5
+    const tech = (emps.find((e) => /فن/.test(e.job_title || '')) || emps[0]).id;
+    mach.forEach((m, i) => {
+      ins('maintenance_plans', { title: 'فحص وتشحيم أسبوعي', machine_id: m, interval_type: 'days', interval_value: 7, last_done: day(i === 1 ? 8 : 3), assigned_to: tech, active: 'yes' });
+      ins('maintenance_plans', { title: 'تغيير فلتر الزيت الهيدروليك', machine_id: m, interval_type: 'hours', interval_value: 500, last_done: day(40), assigned_to: tech, active: 'yes' });
+    });
+    const at = (n, h) => `${day(n)}T${h}`;
+    ins('maintenance_orders', { code: 'MO-0001', type: 'breakdown', machine_id: mach[1], title: 'تسريب زيت من سلندر القفل', priority: 'high', status: 'done',
+      reported_at: at(3, '09:10'), started_at: at(3, '09:25'), finished_at: at(3, '10:45'), downtime_minutes: 95, assigned_to: tech,
+      cause: 'جوان السلندر تالف', action_taken: 'تغيير الجوان وتنضيف المكان', parts_used: 'طقم جوانات سلندر 1', cost: 1200 });
+    ins('maintenance_orders', { code: 'MO-0002', type: 'breakdown', machine_id: mach[4], title: 'السخانات مش بتوصل للحرارة المطلوبة', priority: 'urgent', status: 'in_progress',
+      reported_at: at(2, '13:00'), started_at: at(2, '13:30'), assigned_to: tech, cause: 'سخان رقم 3 محروق', parts_used: 'مستني سخان جديد' });
+    ins('maintenance_orders', { code: 'MO-0003', type: 'preventive', mold_id: molds[0], title: 'تنضيف وتلميع الإسطمبة', priority: 'normal', status: 'done',
+      reported_at: at(30, '08:00'), started_at: at(30, '08:00'), finished_at: at(30, '11:00'), assigned_to: tech, action_taken: 'تنضيف وتلميع وتشحيم المسامير', cost: 300 });
+
     // خصم الخامات للإنتاج التجريبي حسب الـ BOM
     const { applyConsumption } = require('./bom');
     for (const r of db.prepare('SELECT id FROM production_logs').all()) applyConsumption(db, r.id);
+    db.exec("UPDATE production_orders SET status='in_progress' WHERE status='open' AND EXISTS (SELECT 1 FROM production_logs l WHERE l.order_id=production_orders.id)");
     count = emps.length;
     for (const f of MIGRATION_FLAGS) db.setSetting(f, '1');
   })();

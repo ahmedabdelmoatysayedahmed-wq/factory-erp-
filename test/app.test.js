@@ -437,3 +437,69 @@ test('Pre-BOM cards sheet: one row per mold imports into each product card', asy
   await req('POST', '/r/bom_cards/import', null, fx);
   assert.match((await req('GET', `/bom/${pid}`)).text, /name="f\[inj_price\]" value="99"/);
 });
+
+test('work orders: auto number, in progress on first production, order page with materials', async () => {
+  const db = require('../src/db');
+  const req = client();
+  await req('POST', '/login', { username: 'admin', password: 'admin123' });
+  const form = (await req('GET', '/r/production_orders/new')).text;
+  const code = /name="code" type="text"\s*value="(PO-\d+)"/.exec(form)[1];
+  const pid = db.prepare("SELECT id FROM products WHERE code='PB-1'").get().id; // ليه BOM من اختبار الـ BOM
+  const mach = db.prepare('SELECT id FROM machines LIMIT 1').get().id, emp = db.prepare('SELECT id FROM employees LIMIT 1').get().id;
+  await req('POST', '/r/production_orders', { code, product_id: pid, qty_planned: '100', machine_id: mach, status: 'open', priority: 'urgent' });
+  const o = db.prepare('SELECT * FROM production_orders WHERE code=?').get(code);
+  assert.equal(o.status, 'open');
+  assert.match((await req('GET', `/r/production_logs/new?order_id=${o.id}`)).text, new RegExp(`<option value="${o.id}"\\s*selected`));
+  await req('POST', '/r/production_logs', { date: '2026-09-20', employee_id: emp, machine_id: mach, order_id: o.id, qty_produced: '40', qty_scrap: '0' });
+  assert.equal(db.prepare('SELECT status FROM production_orders WHERE id=?').get(o.id).status, 'in_progress');
+  const page = (await req('GET', `/orders/${o.id}`)).text;
+  assert.match(page, /<b>40<\/b><span>/); // اتنتج
+  assert.match(page, /40%/);
+  assert.match(page, /خامة BOM تجريبية<\/td><td><b>55<\/b>/); // 100 × 0.55
+  assert.match(page, /<td>22<\/td>/); // اتصرف على الأمر: 40 × 0.55
+  assert.match((await req('GET', '/r/production_orders')).text, new RegExp(`href="/orders/${o.id}"`));
+});
+
+test('maintenance: breakdown sets machine broken, finishing restores it; plans open orders automatically', async () => {
+  const db = require('../src/db');
+  const MT = require('../src/maintenance');
+  const req = client();
+  await req('POST', '/login', { username: 'admin', password: 'admin123' });
+  await req('POST', '/r/machines', { code: 'MT-1', name: 'ماكينة صيانة', status: 'running', hourly_capacity: '50' });
+  const m = db.prepare("SELECT id FROM machines WHERE code='MT-1'").get().id;
+  const status = () => db.prepare('SELECT status FROM machines WHERE id=?').get(m).status;
+  // بلاغ عطل
+  const form = (await req('GET', '/r/maintenance_orders/new')).text;
+  const code = /name="code" type="text"\s*value="(MO-\d+)"/.exec(form)[1];
+  assert.match((await req('POST', '/r/maintenance_orders', { code, type: 'breakdown', title: 'عطل', status: 'open' })).text, /واحدة بس/); // لازم معدة
+  await req('POST', '/r/maintenance_orders', { code, type: 'breakdown', machine_id: m, title: 'الماكينة مش بتقفل', status: 'open', reported_at: '2026-09-21T08:00' });
+  assert.equal(status(), 'broken');
+  const id = db.prepare('SELECT id FROM maintenance_orders WHERE code=?').get(code).id;
+  assert.match((await req('GET', '/maintenance')).text, /الماكينة مش بتقفل/);
+  assert.match((await req('GET', '/alerts')).text, /الماكينة مش بتقفل/);
+  await req('POST', `/r/maintenance_orders/${id}/start`, {});
+  assert.equal(db.prepare('SELECT status FROM maintenance_orders WHERE id=?').get(id).status, 'in_progress');
+  const fin = await req('POST', `/r/maintenance_orders/${id}/finish`, {});
+  assert.equal(fin.location, `/r/maintenance_orders/${id}/edit`); // يكتب اللي اتعمل بعدها
+  const done = db.prepare('SELECT * FROM maintenance_orders WHERE id=?').get(id);
+  assert.equal(done.status, 'done'); assert.ok(done.finished_at); assert.ok(done.downtime_minutes > 0); // من وقت البلاغ
+  assert.equal(status(), 'running');
+
+  // خطة كل 7 أيام، آخر مرة من 10 أيام => أمر وقائي بيتفتح لوحده (مرة واحدة بس)
+  await req('POST', '/r/maintenance_plans', { title: 'تشحيم تجريبي', machine_id: m, interval_type: 'days', interval_value: '7', last_done: new Date(Date.now() - 10 * 864e5).toISOString().slice(0, 10), active: 'yes' });
+  assert.match((await req('POST', '/r/maintenance_plans', { title: 'غلط', machine_id: m, interval_type: 'shots', interval_value: '5' })).text, /للإسطمبات بس/);
+  MT.createDueOrders(db); MT.createDueOrders(db);
+  const auto = db.prepare("SELECT * FROM maintenance_orders WHERE title='تشحيم تجريبي'").all();
+  assert.equal(auto.length, 1); assert.equal(auto[0].type, 'preventive');
+  // إنهاؤه بيحدّث آخر مرة في الخطة
+  await req('POST', `/r/maintenance_orders/${auto[0].id}/finish`, {});
+  assert.equal(db.prepare("SELECT last_done FROM maintenance_plans WHERE title='تشحيم تجريبي'").get().last_done, new Date().toISOString().slice(0, 10));
+
+  // فني الصيانة يقدر يشتغل على الصيانة بس مايقدرش يعدّل الإنتاج
+  await req('POST', '/users', { username: 'tech', full_name: 'فني', role: 'technician', password: 'tech123', active: '1' });
+  const t = client();
+  await t('POST', '/login', { username: 'tech', password: 'tech123' });
+  assert.equal((await t('GET', '/maintenance')).status, 200);
+  assert.equal((await t('GET', '/r/maintenance_orders/new')).status, 200);
+  assert.equal((await t('GET', '/r/production_logs/new')).status, 403);
+});

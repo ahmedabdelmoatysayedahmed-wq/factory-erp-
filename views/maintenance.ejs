@@ -1,0 +1,62 @@
+<%- include('partials/header', { title: 'لوحة الصيانة' }) %>
+<% const n = (x, d = 0) => Number(Number(x || 0).toFixed(d)).toLocaleString('en'); const lbl = (g, v) => t((STATUS[g] || {})[v] || v || '—');
+   const edit = can('maintenance_orders', 'edit'); %>
+<div class="head">
+  <h1>🛠️ <%= t('لوحة الصيانة') %></h1>
+  <% if (edit) { %><div class="btns" style="margin:0">
+    <a class="btn" href="/r/maintenance_plans/new">+ <%= t('خطة صيانة وقائية') %></a>
+    <a class="btn primary" href="/r/maintenance_orders/new">⚠️ <%= t('بلّغ عن عطل') %></a></div><% } %>
+</div>
+<div class="kpis">
+  <div class="kpi <%= kpi.breakdowns ? 'bad' : '' %>"><b><%= kpi.breakdowns %></b><span><%= t('أعطال مفتوحة') %></span></div>
+  <div class="kpi"><b><%= kpi.open %></b><span><%= t('كل الأوامر المفتوحة') %></span></div>
+  <div class="kpi"><b><%= kpi.inProgress %></b><span><%= t('جاري الإصلاح') %></span></div>
+  <div class="kpi good"><b><%= kpi.doneMonth %></b><span><%= t('اتقفلت الشهر ده') %></span></div>
+  <div class="kpi"><b><%= n(kpi.downtime) %></b><span><%= t('دقائق توقف من الأعطال (الشهر)') %></span></div>
+  <div class="kpi"><b><%= kpi.mttr === null ? '—' : n(kpi.mttr) %></b><span><%= t('متوسط وقت الإصلاح (دقيقة)') %></span></div>
+  <div class="kpi"><b><%= n(kpi.cost) %></b><span><%= t('تكلفة الصيانة (الشهر)') %></span></div>
+</div>
+
+<section class="card">
+  <h2><%= t('الأوامر المفتوحة') %></h2>
+  <div class="table-wrap"><table>
+    <thead><tr><% if (edit) { %><th></th><% } %><th><%= t('رقم الأمر') %></th><th><%= t('النوع') %></th><th><%= t('المعدة') %></th><th><%= t('المشكلة / المطلوب') %></th><th><%= t('الأولوية') %></th><th><%= t('الحالة') %></th><th><%= t('الفني المسؤول') %></th><th><%= t('وقت البلاغ') %></th></tr></thead>
+    <tbody>
+    <% for (const o of open) { %><tr>
+      <% if (edit) { %><td class="actions">
+        <% if (o.status === 'open' || o.status === 'waiting_parts') { %><form method="post" action="/r/maintenance_orders/<%= o.id %>/start" class="inline"><button class="link strong"><%= t('ابدأ') %></button></form><% } %>
+        <form method="post" action="/r/maintenance_orders/<%= o.id %>/finish" class="inline" onsubmit="return confirm('<%= t('الإصلاح خلص؟ (هتقدر تكتب اللي اتعمل بعدها)') %>')"><button class="link strong"><%= t('خلّص') %></button></form>
+        <a href="/r/maintenance_orders/<%= o.id %>/edit"><%= t('تعديل') %></a></td><% } %>
+      <td data-label="<%= t('رقم الأمر') %>"><%= o.code %></td>
+      <td data-label="<%= t('النوع') %>"><span class="tag <%= o.type === 'breakdown' ? 't-absent' : o.type === 'preventive' ? 't-pending' : '' %>"><%= lbl('mType', o.type) %></span></td>
+      <td data-label="<%= t('المعدة') %>"><%= o.mc ? o.mc + ' ' + o.mn : o.dc ? o.dc + ' ' + o.dn : (o.ac || '') + ' ' + (o.an || '') %></td>
+      <td data-label="<%= t('المشكلة / المطلوب') %>"><%= o.title %></td>
+      <td data-label="<%= t('الأولوية') %>"><%= lbl('priority', o.priority) %></td>
+      <td data-label="<%= t('الحالة') %>"><span class="tag t-<%= o.status === 'in_progress' ? 'in_progress' : o.status === 'waiting_parts' ? 'late' : 'open' %>"><%= lbl('mStatus', o.status) %></span></td>
+      <td data-label="<%= t('الفني المسؤول') %>"><%= o.tech || '—' %></td>
+      <td data-label="<%= t('وقت البلاغ') %>"><%= String(o.reported_at || '').replace('T', ' ') %></td></tr><% } %>
+    <% if (!open.length) { %><tr><td colspan="9" class="empty"><%= t('مفيش أوامر صيانة مفتوحة') %> ✅</td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>
+
+<div class="cols">
+<section class="card">
+  <h2>🗓️ <%= t('صيانة وقائية قربت أو جه ميعادها') %></h2>
+  <table><thead><tr><th><%= t('الصيانة المطلوبة') %></th><th><%= t('المعدة') %></th><th><%= t('وصل لميعاده') %></th></tr></thead><tbody>
+  <% for (const p of due) { %><tr><td><%= p.title %></td><td><%= p.eq || '—' %></td>
+    <td><div class="bar <%= p.pct >= 100 ? 'low' : '' %>"><span style="width:<%= Math.min(100, p.pct) %>%"></span><em><%= n(p.used) %> <%= t('من أصل') %> <%= n(p.interval_value) %> <%= t({ days: 'يوم', hours: 'ساعة', shots: 'ضربة' }[p.interval_type]) %></em></div></td></tr><% } %>
+  <% if (!due.length) { %><tr><td colspan="3" class="empty"><%= t('مفيش صيانة وقائية قربت') %> ✅</td></tr><% } %>
+  </tbody></table>
+  <p class="muted"><%= t('لما الخطة توصل 100% البرنامج بيفتح أمر صيانة لوحده.') %> <a href="/r/maintenance_plans"><%= t('كل الخطط') %> ←</a></p>
+</section>
+<section class="card">
+  <h2>🏭 <%= t('الماكينات الشهر ده') %> <small class="muted"><%= month.start.slice(0, 7) %></small></h2>
+  <table><thead><tr><th><%= t('الماكينة') %></th><th><%= t('أعطال') %></th><th><%= t('دقائق التوقف') %></th><th><%= t('صيانة وقائية') %></th><th><%= t('التكلفة') %></th></tr></thead><tbody>
+  <% for (const m of byMachine) { %><tr><td><%= m.name %></td><td class="<%= m.breakdowns > 1 ? 'warn' : '' %>"><%= m.breakdowns %></td><td><%= n(m.downtime) %></td><td><%= m.preventive %></td><td><%= n(m.cost) %></td></tr><% } %>
+  <% if (!byMachine.length) { %><tr><td colspan="5" class="empty"><%= t('لا توجد بيانات') %></td></tr><% } %>
+  </tbody></table>
+  <p class="muted"><a href="/r/maintenance_orders?status=done"><%= t('سجل الصيانة كله') %> ←</a></p>
+</section>
+</div>
+<%- include('partials/footer') %>

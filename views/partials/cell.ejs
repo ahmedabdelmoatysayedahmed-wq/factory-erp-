@@ -2,6 +2,7 @@
 const v = row[f.name];
 let out = v;
 if (v === null || v === undefined || v === '') out = '—';
+else if (f.type === 'datetime-local') out = String(v).replace('T', ' ');
 else if (f.type === 'ref') out = (refs[f.name] || {})[v] || v;
 else if (f.type === 'select') { const o = f.options.find(o => o.value === v); out = o ? t(o.label) : v; }
 else if (f.fmt === 'int') out = Math.round(v).toLocaleString('en');

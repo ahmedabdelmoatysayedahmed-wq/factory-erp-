@@ -10,6 +10,7 @@ const { LANGS, translator } = require('./i18n');
 const { productStock, getAlerts, clearAlertsCache, periodOf, shiftPeriod } = require('./stock');
 const { bomOf, requirements, applyConsumption } = require('./bom');
 const PB = require('./prebom');
+const MT = require('./maintenance');
 const fs = require('fs');
 
 const app = express();
@@ -418,6 +419,62 @@ app.post('/bom/:id/recalc', need('bom', 'edit'), (req, res) => {
   res.redirect(`/bom/${req.params.id}`);
 });
 
+// ---------- صفحة أمر التشغيل (ومنها الطباعة) ----------
+app.get('/orders/:id', need('production_orders'), (req, res) => {
+  const o = db.prepare(`SELECT o.*, p.code pcode, p.name pname, p.unit, m.code mcode, m.name mname, d.code dcode, d.name dname, d.cavities
+    FROM production_orders o JOIN products p ON p.id=o.product_id LEFT JOIN machines m ON m.id=o.machine_id LEFT JOIN molds d ON d.id=o.mold_id WHERE o.id=?`).get(req.params.id);
+  if (!o) return res.status(404).render('error', { msg: 'السجل غير موجود' });
+  const logs = db.prepare(`SELECT l.*, e.name ename, m.code mcode FROM production_logs l LEFT JOIN employees e ON e.id=l.employee_id
+    LEFT JOIN machines m ON m.id=l.machine_id WHERE l.order_id=? ORDER BY l.date DESC, l.id DESC`).all(o.id);
+  const tot = logs.reduce((a, l) => ({ good: a.good + (l.qty_produced || 0), scrap: a.scrap + (l.qty_scrap || 0), hours: a.hours + (l.hours_worked || 0) }), { good: 0, scrap: 0, hours: 0 });
+  // الخامات: المطلوب للأمر كله من الـ BOM، والمصروف فعلاً على الأمر (استهلاك أوتوماتيك + أذونات صرف)
+  const used = Object.fromEntries(db.prepare("SELECT material_id, SUM(CASE WHEN type='out' THEN qty ELSE -qty END) s FROM stock_movements WHERE order_id=? GROUP BY material_id").all(o.id).map((r) => [r.material_id, r.s]));
+  const mats = requirements(db, [{ product_id: o.product_id, qty: o.qty_planned }]).rows.map((m) => ({ ...m, used: used[m.id] || 0 }));
+  res.render('order', { o, logs, tot, mats, noBom: !mats.length, STATUS });
+});
+
+// ---------- الصيانة ----------
+app.get('/maintenance', need('maintenance'), (req, res) => {
+  runDue();
+  const month = periodOf('month', today());
+  const open = db.prepare(`SELECT o.*, m.code mc, m.name mn, d.code dc, d.name dn, a.code ac, a.name an, e.name tech FROM maintenance_orders o
+    LEFT JOIN machines m ON m.id=o.machine_id LEFT JOIN molds d ON d.id=o.mold_id LEFT JOIN assets a ON a.id=o.asset_id LEFT JOIN employees e ON e.id=o.assigned_to
+    WHERE o.status NOT IN ('done','cancelled') ORDER BY CASE o.type WHEN 'breakdown' THEN 0 ELSE 1 END, CASE o.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, o.reported_at`).all();
+  const done = db.prepare(`SELECT * FROM maintenance_orders WHERE status='done' AND substr(finished_at,1,10) BETWEEN ? AND ?`).all(month.start, month.end);
+  const eqName = Object.fromEntries(db.prepare('SELECT id, code, name FROM machines').all().map((m) => [m.id, `${m.code || ''} ${m.name}`]));
+  const byMachine = {};
+  for (const o of done) if (o.machine_id) {
+    const b = byMachine[o.machine_id] ||= { name: eqName[o.machine_id], breakdowns: 0, downtime: 0, cost: 0, preventive: 0 };
+    if (o.type === 'breakdown') { b.breakdowns++; b.downtime += o.downtime_minutes || 0; } else b.preventive++;
+    b.cost += o.cost || 0;
+  }
+  const kpi = {
+    open: open.length, breakdowns: open.filter((o) => o.type === 'breakdown').length, inProgress: open.filter((o) => o.status === 'in_progress').length,
+    doneMonth: done.length, downtime: done.reduce((s, o) => s + (o.type === 'breakdown' ? o.downtime_minutes || 0 : 0), 0), cost: done.reduce((s, o) => s + (o.cost || 0), 0),
+  };
+  const bd = done.filter((o) => o.type === 'breakdown');
+  kpi.mttr = bd.length ? kpi.downtime / bd.length : null;
+  const due = MT.plans(db).filter((p) => p.pct >= 80).sort((a, b) => b.pct - a.pct).map((p) => ({ ...p,
+    eq: p.machine_id ? eqName[p.machine_id] : p.mold_id ? (db.prepare('SELECT code, name FROM molds WHERE id=?').get(p.mold_id) || {}).name : (db.prepare('SELECT name FROM assets WHERE id=?').get(p.asset_id) || {}).name }));
+  res.render('maintenance', { open, kpi, byMachine: Object.values(byMachine), due, month, STATUS });
+});
+const setMStatus = (status) => (req, res) => {
+  const o = db.prepare('SELECT * FROM maintenance_orders WHERE id=?').get(req.params.id);
+  if (!o) return res.status(404).render('error', { msg: 'السجل غير موجود' });
+  const r = require('./resources').resources.maintenance_orders;
+  const row = { ...o, status };
+  r.beforeSave(row);
+  db.transaction(() => {
+    db.prepare('UPDATE maintenance_orders SET status=?, started_at=?, finished_at=?, downtime_minutes=? WHERE id=?').run(row.status, row.started_at, row.finished_at, row.downtime_minutes, o.id);
+    MT.applyOrderEffects(db, o.id);
+  })();
+  if (status === 'done') { flash(req, 'ok', 'تم. اكتب اللي اتعمل وقطع الغيار والتكلفة واحفظ'); return res.redirect(`/r/maintenance_orders/${o.id}/edit`); }
+  flash(req, 'ok', 'تم الحفظ');
+  res.redirect(req.get('referer') && new URL(req.get('referer')).host === req.get('host') ? req.get('referer') : '/maintenance');
+};
+app.post('/r/maintenance_orders/:id/start', need('maintenance_orders', 'edit'), setMStatus('in_progress'));
+app.post('/r/maintenance_orders/:id/finish', need('maintenance_orders', 'edit'), setMStatus('done'));
+
 // ---------- التنبيهات ----------
 app.get('/alerts', need('alerts'), (req, res) => res.render('alerts', { a: getAlerts(db, { fresh: true }) }));
 app.get('/api/alerts', need('alerts'), (req, res) => {
@@ -477,6 +534,11 @@ if (db.getSetting('upcoming_v3') !== '1') {
   if (n) console.log(`Removed ${n} demo upcoming molds (Upcoming Molds is now empty for your import)`);
   db.setSetting('upcoming_v3', '1');
 }
+// أوامر الصيانة الوقائية اللي وصلت ميعادها بتتفتح لوحدها (عند التشغيل وكل ساعة)
+const runDue = () => { try { const n = MT.createDueOrders(db); if (n) { clearAlertsCache(); console.log(`Opened ${n} preventive maintenance orders`); } } catch (e) { console.error('Maintenance check failed:', e.message); } };
+runDue();
+setInterval(runDue, 3600e3).unref();
+
 app.post('/settings/demo', need('users', 'edit'), (req, res) => {
   const n = seedDemo(db, { keepEmployees: true, resetEmployees: !!req.body.reset_employees });
   flash(req, 'ok', ['تمت إضافة بيانات تجريبية (إنتاج وحضور آخر أسبوعين) على {0} موظف', n]);
@@ -531,7 +593,11 @@ const showForm = (req, res, row, error) => {
   for (const f of req.r.fields.filter((f) => f.type === 'ref')) refs[f.name] = refOptions(f);
   res.render('form', { r: req.r, rk: req.rk, row, refs, error });
 };
-app.get('/r/:res/new', getRes, needRes('edit'), (req, res) => showForm(req, res, req.r.newDefaults ? req.r.newDefaults() : {}));
+// قيم مبدئية من الرابط (زي ?order_id=5) لأي حقل موجود في الفورم
+app.get('/r/:res/new', getRes, needRes('edit'), (req, res) => {
+  const pre = Object.fromEntries(req.r.fields.filter((f) => req.query[f.name] !== undefined).map((f) => [f.name, String(req.query[f.name]).slice(0, 200)]));
+  showForm(req, res, { ...(req.r.newDefaults ? req.r.newDefaults(db) : {}), ...pre });
+});
 app.get('/r/:res/:id/edit', getRes, needRes('edit'), (req, res) => {
   const row = db.prepare(`SELECT * FROM ${req.rk} WHERE id=?`).get(req.params.id);
   if (!row) return res.status(404).render('error', { msg: 'السجل غير موجود' });

@@ -77,6 +77,16 @@ CREATE TABLE IF NOT EXISTS bom_lines (
   UNIQUE(product_id, material_id));
 CREATE TABLE IF NOT EXISTS pre_bom (
   product_id INTEGER PRIMARY KEY REFERENCES products(id), data TEXT NOT NULL, updated_at TEXT, updated_by INTEGER);
+CREATE TABLE IF NOT EXISTS maintenance_plans (
+  id INTEGER PRIMARY KEY, title TEXT NOT NULL, machine_id INTEGER REFERENCES machines(id), mold_id INTEGER REFERENCES molds(id),
+  asset_id INTEGER REFERENCES assets(id), interval_type TEXT NOT NULL DEFAULT 'days', interval_value REAL NOT NULL,
+  last_done TEXT, assigned_to INTEGER REFERENCES employees(id), active TEXT DEFAULT 'yes', notes TEXT);
+CREATE TABLE IF NOT EXISTS maintenance_orders (
+  id INTEGER PRIMARY KEY, code TEXT UNIQUE, type TEXT NOT NULL DEFAULT 'breakdown',
+  machine_id INTEGER REFERENCES machines(id), mold_id INTEGER REFERENCES molds(id), asset_id INTEGER REFERENCES assets(id),
+  plan_id INTEGER REFERENCES maintenance_plans(id), title TEXT NOT NULL, priority TEXT DEFAULT 'normal', status TEXT DEFAULT 'open',
+  reported_at TEXT, reported_by INTEGER, assigned_to INTEGER REFERENCES employees(id), started_at TEXT, finished_at TEXT,
+  downtime_minutes REAL, cause TEXT, action_taken TEXT, parts_used TEXT, cost REAL, notes TEXT);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS leaves (
   id INTEGER PRIMARY KEY, employee_id INTEGER NOT NULL REFERENCES employees(id), type TEXT NOT NULL,
@@ -100,6 +110,9 @@ addColumn('molds', 'producer', 'TEXT');
 addColumn('molds', 'agent', 'TEXT');
 addColumn('products', 'min_stock', 'REAL');
 addColumn('stock_movements', 'production_log_id', 'INTEGER');
+addColumn('production_orders', 'machine_id', 'INTEGER REFERENCES machines(id)');
+addColumn('production_orders', 'mold_id', 'INTEGER REFERENCES molds(id)');
+addColumn('production_orders', 'priority', "TEXT DEFAULT 'normal'");
 for (const c of ['part_no', 'oem_no', 'material', 'steel', 'runner', 't0_date']) addColumn('upcoming_molds', c, 'TEXT');
 
 // الإعدادات الافتراضية: الجمعة راحة أسبوعية، وقسم الإجازات مقفول

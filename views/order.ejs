@@ -1,0 +1,47 @@
+<%- include('partials/header', { title: 'أمر تشغيل' }) %>
+<% const n = (x, d = 1) => Number(Number(x || 0).toFixed(d)).toLocaleString('en'); const lbl = (g, v) => t((STATUS[g] || {})[v] || v || '—');
+   const pct = o.qty_planned ? tot.good * 100 / o.qty_planned : 0; %>
+<div class="head no-print">
+  <h1>📋 <%= t('أمر تشغيل') %> <%= o.code %></h1>
+  <div class="btns" style="margin:0">
+    <a class="btn" href="/r/production_orders">→ <%= t('أوامر التشغيل') %></a>
+    <% if (can('production_orders', 'edit')) { %><a class="btn" href="/r/production_orders/<%= o.id %>/edit"><%= t('تعديل') %></a><% } %>
+    <% if (can('production_logs', 'edit') && o.status !== 'done' && o.status !== 'cancelled') { %><a class="btn primary" href="/r/production_logs/new?order_id=<%= o.id %>">+ <%= t('تسجيل إنتاج على الأمر') %></a><% } %>
+    <button type="button" class="btn" onclick="window.print()">🖨️ <%= t('طباعة') %></button>
+  </div>
+</div>
+
+<div class="card wo">
+  <div class="wo-title"><%= t('أمر تشغيل') %> <b><%= o.code %></b><span class="tag t-<%= o.status %>"><%= lbl('order', o.status) %></span>
+    <% if (o.priority && o.priority !== 'normal') { %><span class="tag t-<%= o.priority === 'urgent' || o.priority === 'high' ? 'absent' : '' %>"><%= lbl('priority', o.priority) %></span><% } %></div>
+  <table class="wo-grid"><tbody>
+    <tr><th><%= t('المنتج') %></th><td colspan="3"><b><%= o.pname %></b> <span class="muted"><%= o.pcode || '' %></span></td></tr>
+    <tr><th><%= t('الكمية المطلوبة') %></th><td><b><%= n(o.qty_planned, 0) %></b> <%= o.unit || '' %></td><th><%= t('الأولوية') %></th><td><%= lbl('priority', o.priority) %></td></tr>
+    <tr><th><%= t('الماكينة') %></th><td><%= o.mcode ? o.mcode + ' ' + o.mname : '—' %></td><th><%= t('الإسطمبة') %></th><td><%= o.dcode ? o.dcode + ' ' + o.dname : '—' %><%= o.cavities ? ' (' + o.cavities + ' ' + t('عيون') + ')' : '' %></td></tr>
+    <tr><th><%= t('تاريخ البدء') %></th><td><%= o.start_date || '—' %></td><th><%= t('تاريخ التسليم') %></th><td><%= o.due_date || '—' %></td></tr>
+    <% if (o.notes) { %><tr><th><%= t('ملاحظات') %></th><td colspan="3"><%= o.notes %></td></tr><% } %>
+  </tbody></table>
+
+  <div class="kpis">
+    <div class="kpi good"><b><%= n(tot.good, 0) %></b><span><%= t('اتنتج (سليم)') %></span></div>
+    <div class="kpi"><b><%= n(Math.max(0, o.qty_planned - tot.good), 0) %></b><span><%= t('الباقي') %></span></div>
+    <div class="kpi bad"><b><%= n(tot.scrap, 0) %></b><span><%= t('الهالك') %></span></div>
+    <div class="kpi"><b><%= pct.toFixed(0) %>%</b><span><%= t('نسبة الإنجاز') %></span></div>
+  </div>
+  <div class="bar wo-bar <%= pct < 50 ? 'low' : '' %>"><span style="width:<%= Math.min(100, pct) %>%"></span><em><%= n(tot.good, 0) %> <%= t('من أصل') %> <%= n(o.qty_planned, 0) %></em></div>
+
+  <h2><%= t('الخامات') %></h2>
+  <% if (noBom) { %><p class="muted"><%= t('المنتج ده مالوش BOM، فمش معروف محتاج خامات قد إيه.') %> <a class="no-print" href="/bom/<%= o.product_id %>"><%= t('اعمل BOM') %> ←</a></p><% } else { %>
+  <table><thead><tr><th><%= t('الخامة') %></th><th><%= t('المطلوب للأمر كله') %></th><th><%= t('اتصرف على الأمر') %></th><th><%= t('الباقي يتصرف') %></th><th><%= t('الرصيد في المخزن') %></th></tr></thead><tbody>
+  <% for (const m of mats) { const left = Math.max(0, m.need - m.used); %><tr><td><%= m.name %></td><td><b><%= n(m.need, 2) %></b> <small><%= m.unit || '' %></small></td><td><%= n(m.used, 2) %></td>
+    <td><%= n(left, 2) %></td><td class="<%= m.stock < left ? 'warn' : '' %>"><%= n(m.stock, 2) %></td></tr><% } %>
+  </tbody></table><% } %>
+
+  <h2><%= t('الإنتاج المتسجل على الأمر') %> <small class="muted">(<%= logs.length %>)</small></h2>
+  <table><thead><tr><th><%= t('التاريخ') %></th><th><%= t('الوردية') %></th><th><%= t('الموظف') %></th><th><%= t('الماكينة') %></th><th><%= t('السليم') %></th><th><%= t('الهالك') %></th><th><%= t('الساعات') %></th></tr></thead><tbody>
+  <% for (const l of logs) { %><tr><td><%= l.date %></td><td><%= lbl('shift', l.shift) %></td><td><%= l.ename || '—' %></td><td><%= l.mcode || '—' %></td><td><b><%= n(l.qty_produced, 0) %></b></td><td><%= n(l.qty_scrap, 0) %></td><td><%= n(l.hours_worked) %></td></tr><% } %>
+  <% if (!logs.length) { %><tr><td colspan="7" class="empty"><%= t('لسه مفيش إنتاج متسجل على الأمر ده') %></td></tr><% } %>
+  </tbody></table>
+  <div class="wo-sign print-only"><span><%= t('مشرف الإنتاج') %>: ............</span><span><%= t('مدير المصنع') %>: ............</span><span><%= t('أمين المخزن') %>: ............</span></div>
+</div>
+<%- include('partials/footer') %>

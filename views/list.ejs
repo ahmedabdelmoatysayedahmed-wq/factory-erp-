@@ -31,7 +31,7 @@
       <% if (can(rk, 'edit')) { %>
       <td class="actions">
         <% for (const rl of (r.rowLinks || [])) { %><a class="strong-link" href="<%= rl.href(row) %>"><%= t(rl.label) %></a><% } %>
-        <% for (const ra of (r.rowActions || [])) { %><form method="post" action="/r/<%= rk %>/<%= row.id %>/<%= ra.action %>" class="inline" onsubmit="return confirm('<%= t(ra.confirm) %>')"><button class="link strong"><%= t(ra.label) %></button></form><% } %>
+        <% for (const ra of (r.rowActions || []).filter((a) => !a.show || a.show(row))) { %><form method="post" action="/r/<%= rk %>/<%= row.id %>/<%= ra.action %>" class="inline" onsubmit="return confirm('<%= t(ra.confirm) %>')"><button class="link strong"><%= t(ra.label) %></button></form><% } %>
         <a href="/r/<%= rk %>/<%= row.id %>/edit"><%= t('تعديل') %></a>
         <form method="post" action="/r/<%= rk %>/<%= row.id %>/delete" class="inline" onsubmit="return confirm('<%= t('متأكد من الحذف؟') %>')"><button class="link danger"><%= t('حذف') %></button></form>
       </td><% } %>

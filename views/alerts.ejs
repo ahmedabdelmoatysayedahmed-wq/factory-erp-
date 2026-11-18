@@ -19,6 +19,15 @@
 </section>
 
 <section class="card">
+  <h2>🛠️ <%= t('أوامر صيانة مفتوحة') %></h2>
+  <table><thead><tr><th><%= t('رقم الأمر') %></th><th><%= t('النوع') %></th><th><%= t('المعدة') %></th><th><%= t('المشكلة / المطلوب') %></th></tr></thead><tbody>
+  <% for (const o of a.maintenance) { %><tr><td><a href="/r/maintenance_orders/<%= o.id %>/edit"><%= o.code %></a></td><td><span class="tag <%= o.type === 'breakdown' ? 't-absent' : 't-pending' %>"><%= t({ breakdown: 'عطل', preventive: 'صيانة وقائية', inspection: 'فحص' }[o.type]) %></span></td><td><%= o.eq || '—' %></td><td><%= o.title %></td></tr><% } %>
+  <% if (!a.maintenance.length) { %><tr><td colspan="4" class="empty"><%= t('لا توجد تنبيهات') %> ✅</td></tr><% } %>
+  </tbody></table>
+  <% if (a.maintenance.length && can('maintenance')) { %><p><a class="btn" href="/maintenance"><%= t('لوحة الصيانة') %> ←</a></p><% } %>
+</section>
+
+<section class="card">
   <h2>⚠️ <%= t('مواد خام وصلت لحد الطلب') %></h2>
   <table><thead><tr><th><%= t('المادة') %></th><th><%= t('الرصيد') %></th><th><%= t('حد الطلب') %></th></tr></thead><tbody>
   <% for (const m of a.materials) { %><tr><td><%= m.name %></td><td class="warn"><%= n(m.stock) %> <%= m.unit || '' %></td><td><%= n(m.min_stock) %></td></tr><% } %>

@@ -30,7 +30,10 @@ function getAlerts(db, { fresh = false } = {}) {
   const molds = db.prepare(`SELECT * FROM (SELECT t.*, COALESCE((SELECT CAST(SUM(qty_produced+qty_scrap) AS REAL)/MAX(t.cavities,1)
     FROM production_logs l WHERE l.mold_id=t.id AND (t.last_maintenance IS NULL OR l.date > t.last_maintenance)),0) since
     FROM molds t WHERE t.maintenance_every > 0) WHERE since >= maintenance_every * 0.9 OR status IN ('maintenance','damaged')`).all();
-  const v = { products, materials, molds, count: products.length + materials.length + molds.length };
+  const maintenance = db.prepare(`SELECT o.*, COALESCE(m.code, d.code, a.code) eq FROM maintenance_orders o LEFT JOIN machines m ON m.id=o.machine_id
+    LEFT JOIN molds d ON d.id=o.mold_id LEFT JOIN assets a ON a.id=o.asset_id WHERE o.status NOT IN ('done','cancelled')
+    ORDER BY CASE o.type WHEN 'breakdown' THEN 0 ELSE 1 END, o.reported_at`).all();
+  const v = { products, materials, molds, maintenance, count: products.length + materials.length + molds.length + maintenance.length };
   cache = { t: Date.now(), v };
   return v;
 }

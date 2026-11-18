@@ -130,3 +130,11 @@ tr.total td{border-top:2px solid var(--line);background:#fafbfc}
   .pb-in{height:11px;line-height:11px;font-size:8.5px}.pb-title{font-size:16px;padding:0}
   .pb-photos img{max-height:85px}.pb-sign span{font-size:10px}.pb-rev{padding-top:2px;font-size:8px}
 }
+/* ---------- أمر التشغيل ---------- */
+.wo-title{font-size:20px;display:flex;gap:10px;align-items:center;margin-bottom:12px}
+.wo-grid{margin-bottom:14px}.wo-grid th{width:16%;background:#fafbfc}
+.wo-bar{height:26px;margin-bottom:16px}.wo-bar em{line-height:26px}
+.wo h2{margin-top:18px}
+.print-only{display:none}
+.wo-sign{justify-content:space-between;margin-top:40px}
+@media print{.print-only{display:flex}.wo{font-size:12px}.wo .kpis{grid-template-columns:repeat(4,1fr)}}

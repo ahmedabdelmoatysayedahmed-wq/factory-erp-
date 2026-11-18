@@ -1,5 +1,6 @@
 // تعريف الأقسام (الجداول) وحقول كل قسم - الشاشات تُبنى منها تلقائياً
 const { applyConsumption, removeConsumption } = require('./bom');
+const MT = require('./maintenance');
 const opt = (o) => Object.entries(o).map(([value, label]) => ({ value, label }));
 
 const STATUS = {
@@ -9,6 +10,11 @@ const STATUS = {
   mold: { available: 'متاحة', in_use: 'على الماكينة', maintenance: 'صيانة', damaged: 'تالفة' },
   asset: { in_service: 'في الخدمة', maintenance: 'صيانة', retired: 'مستبعد' },
   move: { in: 'وارد', out: 'صرف', adjust: 'تسوية (+/-)' },
+  mType: { breakdown: 'عطل', preventive: 'صيانة وقائية', inspection: 'فحص' },
+  mStatus: { open: 'مفتوح', in_progress: 'جاري الإصلاح', waiting_parts: 'مستني قطع غيار', done: 'منتهي', cancelled: 'ملغي' },
+  interval: { days: 'كل كام يوم', hours: 'كل كام ساعة تشغيل (للماكينة)', shots: 'كل كام ضربة (للإسطمبة)' },
+  yesno: { yes: 'شغالة', no: 'موقوفة' },
+  priority: { urgent: 'عاجل', high: 'عالي', normal: 'عادي', low: 'منخفض' },
   order: { open: 'مفتوح', in_progress: 'قيد التشغيل', done: 'منتهي', cancelled: 'ملغي' },
   shift: { morning: 'صباحي', evening: 'مسائي', night: 'ليلي' },
   productMove: { out: 'صرف / بيع', in: 'وارد / مرتجع', count: 'جرد (الرصيد الفعلي)' },
@@ -128,6 +134,75 @@ const resources = {
     // زرار في كل صف: لما الإسطمبة توصل المصنع
     rowActions: [{ action: 'receive', label: 'استلام', confirm: 'استلام الإسطمبة دي ونقلها لقائمة الإسطمبات؟' }],
   },
+  maintenance_orders: {
+    title: 'أوامر الصيانة', single: 'أمر صيانة', order: 'id DESC',
+    newDefaults: (db) => ({ code: MT.nextCode(db), type: 'breakdown', status: 'open', priority: 'high', reported_at: MT.now() }),
+    fields: [
+      { name: 'code', label: 'رقم الأمر', required: true, list: true },
+      { name: 'type', label: 'النوع', type: 'select', options: opt(STATUS.mType), required: true, list: true },
+      { name: 'machine_id', label: 'الماكينة', type: 'ref', ref: 'machines', list: true },
+      { name: 'mold_id', label: 'الإسطمبة', type: 'ref', ref: 'molds', list: true },
+      { name: 'asset_id', label: 'الأصل', type: 'ref', ref: 'assets', list: true },
+      { name: 'title', label: 'المشكلة / المطلوب', required: true, list: true },
+      { name: 'priority', label: 'الأولوية', type: 'select', options: opt(STATUS.priority), list: true },
+      { name: 'status', label: 'الحالة', type: 'select', options: opt(STATUS.mStatus), required: true, list: true },
+      { name: 'assigned_to', label: 'الفني المسؤول', type: 'ref', ref: 'employees', list: true },
+      { name: 'reported_at', label: 'وقت البلاغ', type: 'datetime-local', list: true },
+      { name: 'started_at', label: 'بداية الإصلاح', type: 'datetime-local' },
+      { name: 'finished_at', label: 'نهاية الإصلاح', type: 'datetime-local' },
+      { name: 'downtime_minutes', label: 'دقائق توقف المعدة', type: 'number', list: true, hint: 'في الأعطال بتتحسب لوحدها من وقت البلاغ لحد نهاية الإصلاح لو سبتها فاضية' },
+      { name: 'cause', label: 'سبب العطل', type: 'textarea' },
+      { name: 'action_taken', label: 'اللي اتعمل', type: 'textarea' },
+      { name: 'parts_used', label: 'قطع الغيار المستخدمة', type: 'textarea' },
+      { name: 'cost', label: 'التكلفة', type: 'number', list: true },
+      { name: 'plan_id', label: 'خطة الصيانة', type: 'ref', ref: 'maintenance_plans', refLabel: 'title' },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' },
+    ],
+    validate(row) {
+      const n = ['machine_id', 'mold_id', 'asset_id'].filter((k) => row[k]).length;
+      if (n !== 1) return 'اختار المعدة: ماكينة أو إسطمبة أو أصل (واحدة بس)';
+      if (row.finished_at && row.reported_at && row.finished_at < row.reported_at) return 'نهاية الإصلاح قبل وقت البلاغ';
+    },
+    beforeSave(row) {
+      if (row.status === 'in_progress' && !row.started_at) row.started_at = MT.now();
+      if (row.status === 'done' && !row.finished_at) row.finished_at = MT.now();
+      if (row.status === 'done' && row.type === 'breakdown' && row.downtime_minutes === null && row.reported_at && row.finished_at)
+        row.downtime_minutes = Math.max(0, Math.round((new Date(row.finished_at) - new Date(row.reported_at)) / 60000));
+    },
+    afterSave: (db, id) => MT.applyOrderEffects(db, id),
+    rowActions: [
+      { action: 'start', label: 'ابدأ', confirm: 'بدء الإصلاح دلوقتي؟', show: (r) => r.status === 'open' || r.status === 'waiting_parts' },
+      { action: 'finish', label: 'خلّص', confirm: 'الإصلاح خلص؟ (هتقدر تكتب اللي اتعمل بعدها)', show: (r) => r.status !== 'done' && r.status !== 'cancelled' },
+    ],
+  },
+  maintenance_plans: {
+    title: 'خطط الصيانة الوقائية', single: 'خطة صيانة', order: 'title',
+    newDefaults: () => ({ interval_type: 'days', active: 'yes', last_done: today() }),
+    select: `t.*, ${MT.USED_SQL} AS used`,
+    fields: [
+      { name: 'title', label: 'الصيانة المطلوبة', required: true, list: true, hint: 'مثلاً: تغيير زيت الهيدروليك، تشحيم، تنضيف فلاتر' },
+      { name: 'machine_id', label: 'الماكينة', type: 'ref', ref: 'machines', list: true },
+      { name: 'mold_id', label: 'الإسطمبة', type: 'ref', ref: 'molds', list: true },
+      { name: 'asset_id', label: 'الأصل', type: 'ref', ref: 'assets', list: true },
+      { name: 'interval_type', label: 'كل إمتى', type: 'select', options: opt(STATUS.interval), required: true, list: true },
+      { name: 'interval_value', label: 'العدد', type: 'number', required: true, list: true },
+      { name: 'last_done', label: 'آخر مرة اتعملت', type: 'date', list: true },
+      { name: 'assigned_to', label: 'الفني المسؤول', type: 'ref', ref: 'employees' },
+      { name: 'active', label: 'الحالة', type: 'select', options: opt(STATUS.yesno), list: true },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' },
+    ],
+    computed: [
+      { name: 'used', label: 'اتستهلك من آخر صيانة', fmt: 'int' },
+      { name: 'pct', label: 'وصل لميعاده', fmt: 'pct', calc: (r) => (r.interval_value ? Math.min(100, (r.used * 100) / r.interval_value) : 0) },
+    ],
+    validate(row) {
+      const n = ['machine_id', 'mold_id', 'asset_id'].filter((k) => row[k]).length;
+      if (n !== 1) return 'اختار المعدة: ماكينة أو إسطمبة أو أصل (واحدة بس)';
+      if (row.interval_type === 'hours' && !row.machine_id) return 'الصيانة بساعات التشغيل للماكينات بس';
+      if (row.interval_type === 'shots' && !row.mold_id) return 'الصيانة بعدد الضربات للإسطمبات بس';
+      if (!(row.interval_value > 0)) return 'العدد لازم يكون أكبر من صفر';
+    },
+  },
   assets: {
     title: 'الأصول', single: 'أصل', order: 'code',
     fields: [
@@ -179,12 +254,22 @@ const resources = {
     },
   },
   production_orders: {
-    title: 'أوامر التشغيل', single: 'أمر تشغيل', order: 'id DESC', newDefaults: () => ({ start_date: today() }),
+    title: 'أوامر التشغيل', single: 'أمر تشغيل', order: 'id DESC',
+    // رقم الأمر الجاي بيتملى لوحده (PO-101, PO-102, ...)
+    newDefaults: (db) => {
+      const last = db.prepare("SELECT code FROM production_orders WHERE code LIKE 'PO-%' ORDER BY id DESC LIMIT 1").get();
+      const n = last ? (parseInt(last.code.slice(3), 10) || 100) + 1 : 101;
+      return { code: `PO-${n}`, start_date: today(), status: 'open', priority: 'normal' };
+    },
+    rowLinks: [{ label: 'فتح', href: (row) => `/orders/${row.id}` }],
     select: `t.*, COALESCE((SELECT SUM(qty_produced) FROM production_logs l WHERE l.order_id=t.id),0) AS produced`,
     fields: [
       { name: 'code', label: 'رقم الأمر', required: true, list: true },
       { name: 'product_id', label: 'المنتج', type: 'ref', ref: 'products', required: true, list: true },
       { name: 'qty_planned', label: 'الكمية المطلوبة', type: 'number', required: true, list: true },
+      { name: 'machine_id', label: 'الماكينة', type: 'ref', ref: 'machines', list: true },
+      { name: 'mold_id', label: 'الإسطمبة', type: 'ref', ref: 'molds' },
+      { name: 'priority', label: 'الأولوية', type: 'select', options: opt(STATUS.priority), list: true },
       { name: 'start_date', label: 'تاريخ البدء', type: 'date', list: true },
       { name: 'due_date', label: 'تاريخ التسليم', type: 'date', list: true },
       { name: 'status', label: 'الحالة', type: 'select', options: opt(STATUS.order), list: true },
@@ -214,13 +299,22 @@ const resources = {
       { name: 'notes', label: 'ملاحظات', type: 'textarea' },
     ],
     // خصم الخامات من المخزن حسب الـ BOM (وإعادة الحساب لو التسجيل اتعدل، والإرجاع لو اتمسح)
-    afterSave: (db, id) => applyConsumption(db, id),
+    afterSave: (db, id) => {
+      applyConsumption(db, id);
+      // أول إنتاج على أمر مفتوح => الأمر بقى قيد التشغيل
+      db.prepare("UPDATE production_orders SET status='in_progress' WHERE status='open' AND id=(SELECT order_id FROM production_logs WHERE id=?)").run(id);
+    },
     beforeDelete: (db, id) => removeConsumption(db, id),
     beforeSave(row, db) {
       // لو اختار أمر تشغيل ومفيش منتج، ناخد منتج الأمر
       if (row.order_id && !row.product_id) {
         const o = db.prepare('SELECT product_id FROM production_orders WHERE id=?').get(row.order_id);
         if (o) row.product_id = o.product_id;
+      }
+      // ولو الأمر ليه إسطمبة ومفيش إسطمبة متختارة، ناخد إسطمبة الأمر
+      if (row.order_id && !row.mold_id) {
+        const o = db.prepare('SELECT mold_id FROM production_orders WHERE id=?').get(row.order_id);
+        if (o && o.mold_id) row.mold_id = o.mold_id;
       }
       // ولو اختار إسطمبة، ناخد المنتج بتاعها (لازم قبل الحفظ علشان الخامات تتخصم صح)
       if (row.mold_id && !row.product_id) {
