@@ -1,0 +1,61 @@
+<%- include('partials/header', { title: 'شاشة الصالة' }) %>
+<div class="head"><h1>📱 <%= t('شاشة الصالة') %></h1><span class="muted"><%= date %></span></div>
+<div id="msg"></div>
+<% if (!sheets.length) { %><div class="card empty"><%= t('مفيش محاضر مفتوحة دلوقتي. المشرف بيفتح محضر لكل ماكينة من «محاضر الوردية».') %></div><% } %>
+<div class="floor">
+<% for (const s of sheets) { %>
+  <div class="card fl <%= s.open ? 'fl-open' : '' %>">
+    <div class="fl-head"><b><%= s.mcode %></b> <%= s.mname %><span class="muted"><%= s.pname || '' %></span></div>
+    <div class="fl-strip"><% for (const x of s.v.slots) { %><i class="st-<%= x.e && x.e.status === 'missed' ? 'missed' : x.state %>" title="<%= x.from %>-<%= x.to %>"></i><% } %></div>
+    <% if (s.open) { %>
+      <form class="fl-form" onsubmit="return send(event, <%= s.id %>, <%= s.open.i %>, false)">
+        <div class="fl-q"><%= t('سجّل إنتاج الساعة') %> <b><%= s.open.from %> → <%= s.open.to %></b>
+          <span class="countdown" data-deadline="<%= s.open.deadline %>"></span></div>
+        <input name="qty" type="number" min="0" inputmode="numeric" placeholder="<%= t('عدد الإنتاج') %>" required>
+        <input name="scrap" type="number" min="0" inputmode="numeric" placeholder="<%= t('عدد التوالف') %>">
+        <input name="cycle_time" type="number" min="0" step="any" inputmode="decimal" placeholder="<%= t('زمن الدورة (ثانية)') %>">
+        <button class="btn primary"><%= t('حفظ') %></button>
+      </form>
+    <% } else if (s.running) { %>
+      <p class="fl-wait">⏳ <%= t(['الساعة {0} → {1} شغالة. سجّلها أول ما تخلص (عندك {2} دقايق).', s.running.from, s.running.to, W]) %></p>
+    <% } %>
+    <% if (s.missed.length) { %>
+      <details class="fl-late"><summary>🔒 <%= t(['{0} ساعة اتقفلت ماتسجلتش. ارفع صورة أو فيديو علشان تتحسب', s.missed.length]) %></summary>
+      <% for (const x of s.missed) { %>
+        <form class="fl-form" onsubmit="return send(event, <%= s.id %>, <%= x.i %>, true)">
+          <div class="fl-q"><%= x.from %> → <%= x.to %></div>
+          <input name="qty" type="number" min="0" inputmode="numeric" placeholder="<%= t('عدد الإنتاج') %>" required>
+          <input name="scrap" type="number" min="0" inputmode="numeric" placeholder="<%= t('عدد التوالف') %>">
+          <input name="proof" type="file" accept="image/*,video/*" capture="environment" required>
+          <button class="btn"><%= t('رفع وحفظ') %></button>
+        </form>
+      <% } %></details>
+    <% } %>
+  </div>
+<% } %>
+</div>
+<script>
+var OFFSET = <%= serverNow %> - Date.now();
+function tick() {
+  document.querySelectorAll('.countdown').forEach(function (el) {
+    var left = Math.max(0, Math.round((Number(el.dataset.deadline) - Date.now() - OFFSET) / 1000));
+    el.textContent = '⏱ ' + Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
+    if (!left) location.reload();
+  });
+}
+setInterval(tick, 1000); tick();
+setTimeout(function () { location.reload(); }, 30000);
+function send(ev, id, slot, late) {
+  ev.preventDefault();
+  var f = ev.target, q = new URLSearchParams(), file = late ? f.proof.files[0] : null;
+  ['qty', 'scrap', 'cycle_time'].forEach(function (k) { if (f[k] && f[k].value !== '') q.set(k, f[k].value); });
+  var url = '/shifts/' + id + '/slot/' + slot;
+  var p = file ? fetch(url + '?' + q, { method: 'POST', body: file, headers: { 'content-type': file.type } })
+               : fetch(url, { method: 'POST', body: q, headers: { 'content-type': 'application/x-www-form-urlencoded' } });
+  p.then(function (r) { return r.json(); }).then(function (j) {
+    if (j.ok) location.reload(); else document.getElementById('msg').innerHTML = '<div class="flash err">' + j.error + '</div>';
+  });
+  return false;
+}
+</script>
+<%- include('partials/footer') %>

@@ -33,7 +33,10 @@ function getAlerts(db, { fresh = false } = {}) {
   const maintenance = db.prepare(`SELECT o.*, COALESCE(m.code, d.code, a.code) eq FROM maintenance_orders o LEFT JOIN machines m ON m.id=o.machine_id
     LEFT JOIN molds d ON d.id=o.mold_id LEFT JOIN assets a ON a.id=o.asset_id WHERE o.status NOT IN ('done','cancelled')
     ORDER BY CASE o.type WHEN 'breakdown' THEN 0 ELSE 1 END, o.reported_at`).all();
-  const v = { products, materials, molds, maintenance, count: products.length + materials.length + molds.length + maintenance.length };
+  // ساعات اتقفلت ماتسجلتش في المحاضر المفتوحة (آخر يومين)
+  const missed = db.prepare(`SELECT s.id, s.date, m.code mcode, m.name mname, COUNT(*) n FROM hourly_logs h JOIN shift_sheets s ON s.id=h.sheet_id
+    JOIN machines m ON m.id=s.machine_id WHERE h.status='missed' AND s.date >= date('now','-1 day') GROUP BY s.id ORDER BY s.date DESC, m.code`).all();
+  const v = { products, materials, molds, maintenance, missed, count: products.length + materials.length + molds.length + maintenance.length + missed.length };
   cache = { t: Date.now(), v };
   return v;
 }

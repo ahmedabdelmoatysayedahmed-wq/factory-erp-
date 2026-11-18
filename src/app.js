@@ -11,6 +11,7 @@ const { productStock, getAlerts, clearAlertsCache, periodOf, shiftPeriod } = req
 const { bomOf, requirements, applyConsumption } = require('./bom');
 const PB = require('./prebom');
 const MT = require('./maintenance');
+const SH = require('./shifts');
 const fs = require('fs');
 
 const app = express();
@@ -69,8 +70,8 @@ app.post('/login', (req, res) => {
   if (!u || !bcrypt.compareSync(req.body.password || '', u.password_hash))
     return res.status(401).render('login', { error: 'اسم المستخدم أو كلمة المرور غلط' });
   req.session.regenerate(() => {
-    req.session.user = { id: u.id, username: u.username, full_name: u.full_name, role: u.role };
-    res.redirect('/');
+    req.session.user = { id: u.id, username: u.username, full_name: u.full_name, role: u.role, employee_id: u.employee_id };
+    res.redirect(u.role === 'operator' ? '/floor' : '/');
   });
 });
 app.post('/logout', (req, res) => req.session.destroy(() => res.redirect('/login')));
@@ -159,6 +160,9 @@ app.get('/reports', need('reports'), (req, res) => {
       (SELECT COUNT(*) FROM attendance a WHERE a.employee_id=e.id AND a.date BETWEEN ? AND ? AND a.status='late') late_days
     FROM employees e LEFT JOIN production_logs l ON l.employee_id=e.id AND l.date BETWEEN ? AND ?
     GROUP BY e.id ORDER BY produced DESC`).all(from, to, from, to, from, to, from, to);
+  const missedBy = Object.fromEntries(db.prepare(`SELECT h.employee_id, COUNT(*) n FROM hourly_logs h JOIN shift_sheets s ON s.id=h.sheet_id
+    WHERE h.status='missed' AND s.date BETWEEN ? AND ? GROUP BY h.employee_id`).all(from, to).map((r) => [r.employee_id, r.n]));
+  byEmployee.forEach((e) => { e.missed = missedBy[e.id] || 0; });
   const byMachine = db.prepare(`SELECT m.id, m.code, m.name, m.hourly_capacity,
       COALESCE(SUM(l.qty_produced),0) produced, COALESCE(SUM(l.qty_scrap),0) scrap,
       COALESCE(SUM(l.hours_worked),0) hours, COALESCE(SUM(l.downtime_minutes),0) downtime
@@ -184,23 +188,24 @@ app.get('/reports', need('reports'), (req, res) => {
 
 // ---------- المستخدمين ----------
 app.get('/users', need('users'), (req, res) =>
-  res.render('users', { users: db.prepare('SELECT * FROM users ORDER BY id').all(), edit: null }));
+  res.render('users', { users: db.prepare('SELECT * FROM users ORDER BY id').all(), edit: null, emps: db.prepare('SELECT id, name, code FROM employees ORDER BY name').all() }));
 app.get('/users/:id/edit', need('users', 'edit'), (req, res) =>
   res.render('users', { users: db.prepare('SELECT * FROM users ORDER BY id').all(),
-    edit: db.prepare('SELECT * FROM users WHERE id=?').get(req.params.id) }));
+    edit: db.prepare('SELECT * FROM users WHERE id=?').get(req.params.id), emps: db.prepare('SELECT id, name, code FROM employees ORDER BY name').all() }));
 app.post('/users', need('users', 'edit'), (req, res) => {
   const { id, username, full_name, role, password } = req.body;
+  const employee_id = req.body.employee_id ? Number(req.body.employee_id) : null;
   const active = req.body.active ? 1 : 0;
   if (!ROLES[role]) { flash(req, 'err', 'دور غير صحيح'); return res.redirect('/users'); }
   try {
     if (id) {
       if (Number(id) === req.session.user.id && (!active || role !== 'admin')) throw new Error('لا يمكنك إيقاف حسابك أو تغيير دورك');
-      db.prepare('UPDATE users SET username=?, full_name=?, role=?, active=? WHERE id=?').run(username, full_name, role, active, id);
+      db.prepare('UPDATE users SET username=?, full_name=?, role=?, active=?, employee_id=? WHERE id=?').run(username, full_name, role, active, employee_id, id);
       if (password) db.prepare('UPDATE users SET password_hash=? WHERE id=?').run(bcrypt.hashSync(password, 10), id);
     } else {
       if (!password || password.length < 6) throw new Error('كلمة المرور لازم تكون 6 حروف على الأقل');
-      db.prepare('INSERT INTO users (username,password_hash,full_name,role,active) VALUES (?,?,?,?,?)')
-        .run(username, bcrypt.hashSync(password, 10), full_name, role, active);
+      db.prepare('INSERT INTO users (username,password_hash,full_name,role,active,employee_id) VALUES (?,?,?,?,?,?)')
+        .run(username, bcrypt.hashSync(password, 10), full_name, role, active, employee_id);
     }
     flash(req, 'ok', 'تم الحفظ');
   } catch (e) {
@@ -212,11 +217,13 @@ app.post('/users', need('users', 'edit'), (req, res) => {
 // ---------- الإعدادات (مدير النظام) ----------
 const DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 app.get('/settings', need('users', 'edit'), (req, res) =>
-  res.render('settings', { DAYS, noEmployees: !db.prepare('SELECT 1 FROM employees LIMIT 1').get() }));
+  res.render('settings', { DAYS, noEmployees: !db.prepare('SELECT 1 FROM employees LIMIT 1').get(), db_shift_start: SH.startHour(db), db_window: SH.windowMin(db) }));
 app.post('/settings', need('users', 'edit'), (req, res) => {
   const off = [].concat(req.body.weekly_off || []).map(Number).filter((n) => n >= 0 && n <= 6);
   db.setSetting('weekly_off', off.join(','));
   db.setSetting('leaves_enabled', req.body.leaves_enabled ? '1' : '0');
+  if (Number(req.body.hourly_window_min) > 0) db.setSetting('hourly_window_min', Number(req.body.hourly_window_min));
+  if (req.body.shift_start_hour !== undefined && Number(req.body.shift_start_hour) >= 0 && Number(req.body.shift_start_hour) <= 23) db.setSetting('shift_start_hour', Number(req.body.shift_start_hour));
   if (req.body.product_min_stock !== undefined && Number(req.body.product_min_stock) >= 0) db.setSetting('product_min_stock', Number(req.body.product_min_stock));
   flash(req, 'ok', 'تم الحفظ');
   res.redirect('/settings');
@@ -433,6 +440,141 @@ app.get('/orders/:id', need('production_orders'), (req, res) => {
   res.render('order', { o, logs, tot, mats, noBom: !mats.length, STATUS });
 });
 
+// ---------- محضر استلام الوردية ----------
+const sheetQ = `SELECT s.*, m.code mcode, m.name mname, p.code pcode, p.name pname, d.code dcode, o.code ocode,
+  dw.name dw_name, dt.name dt_name, nw.name nw_name, nt.name nt_name, sv.name sv_name
+  FROM shift_sheets s JOIN machines m ON m.id=s.machine_id LEFT JOIN products p ON p.id=s.product_id LEFT JOIN molds d ON d.id=s.mold_id
+  LEFT JOIN production_orders o ON o.id=s.order_id LEFT JOIN employees dw ON dw.id=s.day_worker_id LEFT JOIN employees dt ON dt.id=s.day_tech_id
+  LEFT JOIN employees nw ON nw.id=s.night_worker_id LEFT JOIN employees nt ON nt.id=s.night_tech_id LEFT JOIN employees sv ON sv.id=s.supervisor_id`;
+function sheetView(sh) {
+  const entries = Object.fromEntries(db.prepare(`SELECT h.*, e.name ename, t.name tname FROM hourly_logs h LEFT JOIN employees e ON e.id=h.employee_id
+    LEFT JOIN employees t ON t.id=h.tech_id WHERE h.sheet_id=?`).all(sh.id).map((r) => [r.slot, r]));
+  const slots = Array.from({ length: SH.SLOTS }, (x, i) => {
+    const st = SH.slotState(db, sh, i, entries[i]);
+    const h = (SH.startHour(db) + i) % 24;
+    return { i, from: SH.hour12(h), to: SH.hour12(h + 1), e: entries[i] || null, ...st, deadline: st.deadline ? st.deadline.getTime() : null };
+  });
+  const sum = (a) => a.reduce((t, x) => ({ qty: t.qty + (x.e ? x.e.qty || 0 : 0), scrap: t.scrap + (x.e ? x.e.scrap || 0 : 0), missed: t.missed + (x.e && x.e.status === 'missed' ? 1 : 0) }), { qty: 0, scrap: 0, missed: 0 });
+  return { slots, day: sum(slots.slice(0, 12)), night: sum(slots.slice(12)), downtimes: db.prepare('SELECT * FROM sheet_downtimes WHERE sheet_id=? ORDER BY id').all(sh.id) };
+}
+const pickLists = () => ({
+  machines: db.prepare("SELECT id, COALESCE(code || ' - ', '') || name label FROM machines ORDER BY code").all(),
+  molds: db.prepare("SELECT id, COALESCE(code || ' - ', '') || name label FROM molds ORDER BY code").all(),
+  orders: db.prepare("SELECT o.id, o.code || ' - ' || p.name label FROM production_orders o JOIN products p ON p.id=o.product_id WHERE o.status IN ('open','in_progress') ORDER BY o.id DESC").all(),
+  emps: db.prepare("SELECT id, name || CASE worker_type WHEN 'tech' THEN ' (فني)' ELSE '' END label, worker_type FROM employees WHERE status='active' ORDER BY name").all(),
+});
+app.get('/shifts', need('shifts'), (req, res) => {
+  const date = (req.query.date || SH.currentSheetDate(db)).slice(0, 10);
+  const sheets = db.prepare(`${sheetQ} WHERE s.date=? ORDER BY m.code`).all(date).map((sh) => ({ ...sh, v: sheetView(sh) }));
+  res.render('shifts', { date, sheets, ...pickLists(), today: SH.currentSheetDate(db) });
+});
+const toId = (v) => (v ? Number(v) : null);
+app.post('/shifts', need('shifts', 'edit'), (req, res) => {
+  const b = req.body, date = (b.date || SH.currentSheetDate(db)).slice(0, 10);
+  let product_id = toId(b.product_id), mold_id = toId(b.mold_id);
+  const order_id = toId(b.order_id);
+  if (order_id) { const o = db.prepare('SELECT * FROM production_orders WHERE id=?').get(order_id); if (o) { product_id ||= o.product_id; mold_id ||= o.mold_id; } }
+  if (mold_id && !product_id) product_id = (db.prepare('SELECT product_id FROM molds WHERE id=?').get(mold_id) || {}).product_id || null;
+  try {
+    const id = db.prepare(`INSERT INTO shift_sheets (machine_id, date, product_id, mold_id, order_id, day_worker_id, day_tech_id, night_worker_id, night_tech_id, supervisor_id, started_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(Number(b.machine_id), date, product_id, mold_id, order_id, toId(b.day_worker_id), toId(b.day_tech_id), toId(b.night_worker_id), toId(b.night_tech_id),
+      toId(b.supervisor_id), SH.localStamp(SH.now())).lastInsertRowid;
+    res.redirect(`/shifts/${id}`);
+  } catch (e) {
+    flash(req, 'err', e.message.includes('UNIQUE') ? 'الماكينة دي ليها محضر في اليوم ده خلاص' : ['خطأ في الحفظ: {0}', e.message]);
+    res.redirect(`/shifts?date=${date}`);
+  }
+});
+app.get('/shifts/:id', need('shifts'), (req, res) => {
+  const sh = db.prepare(`${sheetQ} WHERE s.id=?`).get(req.params.id);
+  if (!sh) return res.status(404).render('error', { msg: 'السجل غير موجود' });
+  res.render('shift', { sh, ...sheetView(sh), ...pickLists(), W: SH.windowMin(db), STATUS });
+});
+app.post('/shifts/:id', need('shifts', 'edit'), (req, res) => {
+  const b = req.body;
+  db.prepare(`UPDATE shift_sheets SET product_id=?, mold_id=?, order_id=?, day_worker_id=?, day_tech_id=?, night_worker_id=?, night_tech_id=?, supervisor_id=?, notes=? WHERE id=?`)
+    .run(toId(b.product_id), toId(b.mold_id), toId(b.order_id), toId(b.day_worker_id), toId(b.day_tech_id), toId(b.night_worker_id), toId(b.night_tech_id), toId(b.supervisor_id), b.notes || null, req.params.id);
+  SH.aggregate(db, Number(req.params.id));
+  flash(req, 'ok', 'تم الحفظ'); res.redirect(`/shifts/${req.params.id}`);
+});
+app.post('/shifts/:id/close', need('shifts', 'edit'), (req, res) => {
+  db.prepare('UPDATE shift_sheets SET closed_at=? WHERE id=? AND closed_at IS NULL').run(SH.localStamp(SH.now()), req.params.id);
+  flash(req, 'ok', 'تم قفل المحضر'); res.redirect(`/shifts/${req.params.id}`);
+});
+app.post('/shifts/:id/reopen', need('shifts', 'edit'), (req, res) => {
+  db.prepare('UPDATE shift_sheets SET closed_at=NULL WHERE id=?').run(req.params.id);
+  res.redirect(`/shifts/${req.params.id}`);
+});
+app.post('/shifts/:id/downtime', need('hourly', 'edit'), (req, res) => {
+  const { from_time, to_time, reason } = req.body;
+  const sh = db.prepare('SELECT * FROM shift_sheets WHERE id=?').get(req.params.id);
+  if (!sh || !from_time || !to_time || !reason) { flash(req, 'err', 'اكتب من وإلى وسبب العطل'); return res.redirect(`/shifts/${req.params.id}`); }
+  const [fh, fm] = from_time.split(':').map(Number), [th, tm] = to_time.split(':').map(Number);
+  const minutes = ((th * 60 + tm) - (fh * 60 + fm) + 1440) % 1440;
+  const slot = (fh - SH.startHour(db) + 24) % 24;
+  db.prepare('INSERT INTO sheet_downtimes (sheet_id, from_time, to_time, minutes, reason, slot) VALUES (?,?,?,?,?,?)').run(sh.id, from_time, to_time, minutes, reason, slot);
+  SH.aggregate(db, sh.id);
+  flash(req, 'ok', 'تم الحفظ'); res.redirect(`/shifts/${sh.id}`);
+});
+app.post('/shifts/:id/downtime/:d/delete', need('shifts', 'edit'), (req, res) => {
+  db.prepare('DELETE FROM sheet_downtimes WHERE id=? AND sheet_id=?').run(req.params.d, req.params.id);
+  SH.aggregate(db, Number(req.params.id)); res.redirect(`/shifts/${req.params.id}`);
+});
+// تسجيل إنتاج ساعة: في الـ N دقايق بعد الساعة بس، وبعدها بصورة/فيديو (أو المشرف يعدّل)
+app.post('/shifts/:id/slot/:i', need('hourly', 'edit'), express.raw({ type: ['image/*', 'video/*'], limit: '80mb' }), (req, res) => {
+  const tr = res.locals.t, fail = (m) => res.status(400).json({ ok: false, error: tr(m) });
+  const sh = db.prepare('SELECT * FROM shift_sheets WHERE id=?').get(req.params.id);
+  const i = Number(req.params.i);
+  if (!sh || !(i >= 0 && i < SH.SLOTS)) return fail('السجل غير موجود');
+  const isFile = Buffer.isBuffer(req.body) && req.body.length > 0;
+  const f = isFile ? req.query : { ...req.query, ...req.body };
+  const qty = Number(f.qty), scrap = f.scrap === undefined || f.scrap === '' ? 0 : Number(f.scrap);
+  if (!(qty >= 0) || !(scrap >= 0)) return fail('اكتب عدد الإنتاج');
+  const entry = db.prepare('SELECT * FROM hourly_logs WHERE sheet_id=? AND slot=?').get(sh.id, i);
+  const st = SH.slotState(db, sh, i, null);
+  const boss = can(req.session.user, 'shifts', 'edit');
+  if (st.state === 'future' || st.state === 'running') return fail('الساعة دي لسه ماخلصتش');
+  if (st.state === 'off' && !boss) return fail('المحضر مش مفتوح للساعة دي');
+  let status, proof = null;
+  if (st.state === 'open') status = 'on_time';
+  else if (isFile) {
+    const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/heic': 'heic', 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm', 'video/3gpp': '3gp' }[req.get('content-type')];
+    if (!ext) return fail('نوع الملف ده مش مدعوم. ارفع صورة أو فيديو');
+    proof = `proof-${sh.id}-${i}-${Date.now()}.${ext}`;
+    fs.writeFileSync(require('path').join(uploadsDir(), proof), req.body);
+    status = 'late_proof';
+  } else if (boss) status = 'edited';
+  else return fail(['الوقت عدّى ({0} دقايق بعد الساعة). الساعة اتقفلت واتحسبت ماشتغلش، ومش هتتسجل غير برفع صورة أو فيديو', SH.windowMin(db)]);
+  const emp = toId(f.employee_id) || (entry && entry.employee_id) || (req.session.user.employee_id) || (i < 12 ? sh.day_worker_id : sh.night_worker_id);
+  const tech = toId(f.tech_id) || (entry && entry.tech_id) || (i < 12 ? sh.day_tech_id : sh.night_tech_id);
+  db.transaction(() => {
+    db.prepare(`INSERT INTO hourly_logs (sheet_id, slot, qty, scrap, cycle_time, employee_id, tech_id, notes, status, proof_file, entered_at, entered_by)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(sheet_id, slot) DO UPDATE SET qty=excluded.qty, scrap=excluded.scrap, cycle_time=excluded.cycle_time,
+      employee_id=excluded.employee_id, tech_id=excluded.tech_id, notes=excluded.notes, status=excluded.status, proof_file=COALESCE(excluded.proof_file, proof_file),
+      entered_at=excluded.entered_at, entered_by=excluded.entered_by`)
+      .run(sh.id, i, qty, scrap, f.cycle_time ? Number(f.cycle_time) : null, emp, tech, f.notes ? String(f.notes).slice(0, 300) : null, status, proof, SH.localStamp(SH.now()), req.session.user.id);
+    SH.aggregate(db, sh.id);
+  })();
+  clearAlertsCache();
+  res.json({ ok: true, status });
+});
+app.get('/shifts/:id/proof/:file', need('shifts'), (req, res) => {
+  const name = require('path').basename(req.params.file);
+  if (!name.startsWith(`proof-${Number(req.params.id)}-`)) return res.status(404).end();
+  res.sendFile(require('path').join(uploadsDir(), name), (e) => e && res.status(404).end());
+});
+// شاشة الصالة للعامل (من الموبايل): المحاضر المفتوحة والساعة اللي عليها الدور
+app.get('/floor', need('hourly'), (req, res) => {
+  SH.markMissed(db);
+  const date = SH.currentSheetDate(db);
+  const sheets = db.prepare(`${sheetQ} WHERE s.date=? AND s.closed_at IS NULL ORDER BY m.code`).all(date).map((sh) => {
+    const v = sheetView(sh);
+    return { ...sh, v, open: v.slots.find((s) => s.state === 'open'), running: v.slots.find((s) => s.state === 'running'),
+      missed: v.slots.filter((s) => s.e && s.e.status === 'missed') };
+  });
+  res.render('floor', { sheets, date, W: SH.windowMin(db), emps: pickLists().emps, serverNow: SH.now().getTime() });
+});
+
 // ---------- الصيانة ----------
 app.get('/maintenance', need('maintenance'), (req, res) => {
   runDue();
@@ -538,6 +680,11 @@ if (db.getSetting('upcoming_v3') !== '1') {
 const runDue = () => { try { const n = MT.createDueOrders(db); if (n) { clearAlertsCache(); console.log(`Opened ${n} preventive maintenance orders`); } } catch (e) { console.error('Maintenance check failed:', e.message); } };
 runDue();
 setInterval(runDue, 3600e3).unref();
+
+// كل دقيقة: الساعات اللي عدّى وقت تسجيلها بتتقفل "ماشتغلش"
+const runMissed = () => { try { if (SH.markMissed(db)) clearAlertsCache(); } catch (e) { console.error('Hourly check failed:', e.message); } };
+runMissed();
+setInterval(runMissed, 60e3).unref();
 
 app.post('/settings/demo', need('users', 'edit'), (req, res) => {
   const n = seedDemo(db, { keepEmployees: true, resetEmployees: !!req.body.reset_employees });

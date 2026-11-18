@@ -1,0 +1,123 @@
+<%- include('partials/header', { title: 'محضر استلام وردية' }) %>
+<% const n = (x) => x === null || x === undefined ? '' : Number(Number(x).toFixed(1)).toLocaleString('en');
+   const boss = can('shifts', 'edit'), canEnter = can('hourly', 'edit');
+   const days = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+   const [yy, mm, dd] = sh.date.split('-'); const dow = days[new Date(Number(yy), Number(mm) - 1, Number(dd)).getDay()];
+   const badge = { done: '', missed: 't-absent', open: 't-pending', running: 't-open', future: '', off: '' };
+   const opts = (list, val) => list.map((o) => `<option value="${o.id}" ${String(o.id) === String(val) ? 'selected' : ''}>${String(o.label).replace(/</g, '&lt;')}</option>`).join(''); %>
+<div class="head no-print">
+  <h1>📝 <%= t('محضر استلام وردية') %>: <%= sh.mcode %> <%= sh.mname %></h1>
+  <div class="btns" style="margin:0">
+    <a class="btn" href="/shifts?date=<%= sh.date %>">→ <%= t('محاضر اليوم') %></a>
+    <button type="button" class="btn" onclick="window.print()">🖨️ <%= t('طباعة') %></button>
+    <% if (boss) { %><form method="post" action="/shifts/<%= sh.id %>/<%= sh.closed_at ? 'reopen' : 'close' %>" class="inline"><button class="btn"><%= t(sh.closed_at ? 'إعادة فتح المحضر' : 'قفل المحضر') %></button></form><% } %>
+  </div>
+</div>
+<div id="msg" class="no-print"></div>
+
+<div class="card sh">
+  <div class="sh-title"><%= t('محضر استلام ورديه') %></div>
+  <table class="sh-meta"><tbody><tr>
+    <th><%= t('اليوم') %>:</th><td><%= t(dow) %></td><th><%= t('التاريخ') %>:</th><td><%= dd %> / <%= mm %> / <%= yy %></td>
+    <th><%= t('اسم المنتج') %>:</th><td><%= sh.pname || '—' %> <small><%= sh.pcode || '' %></small></td><th><%= t('الماكينة') %>:</th><td><%= sh.mcode %></td>
+  </tr></tbody></table>
+
+  <% for (const [part, label, rows, tot] of [['day', 'الإنتاج النهاري', slots.slice(0, 12), day], ['night', 'الانتاج الليلي', slots.slice(12), night]]) { %>
+  <% if (part === 'night') { %><div class="sh-sub"><%= t(label) %></div><% } %>
+  <table class="sh-grid"><thead><tr><th><%= t('من') %></th><th><%= t('الي') %></th><th><%= t('معدل الانتاج') %></th><th><%= t('عدد التوالف') %></th><th><%= t('اسم العامل') %></th><th><%= t('زمن الدورة') %></th><th><%= t('ملاحظات') %></th></tr></thead><tbody>
+  <% for (const s of rows) { const e = s.e; %>
+    <tr class="sh-<%= s.state %> <%= e && e.status === 'missed' ? 'sh-missed' : '' %>" <% if (canEnter && (s.state !== 'future' && s.state !== 'running' && (s.state !== 'off' || boss))) { %>onclick="pick(<%= s.i %>)" style="cursor:pointer"<% } %>>
+      <td><%= s.from %></td><td><%= s.to %></td>
+      <td><b><%= e ? n(e.qty) : '' %></b></td><td><%= e ? n(e.scrap) : '' %></td>
+      <td><%= e ? (e.ename || '') + (e.tname ? ' / ' + e.tname : '') : '' %></td>
+      <td><%= e ? n(e.cycle_time) : '' %></td>
+      <td><% if (e && e.status !== 'on_time') { %><span class="tag <%= e.status === 'missed' ? 't-absent' : 't-pending' %>"><%= t(STATUS.hourStatus[e.status]) %></span><% } %>
+        <% if (e && e.proof_file) { %><a class="no-print" href="/shifts/<%= sh.id %>/proof/<%= encodeURIComponent(e.proof_file) %>" target="_blank">📎</a><% } %>
+        <%= e && e.notes ? e.notes : '' %>
+        <% if (!e && s.state === 'open') { %><span class="tag t-pending no-print">⏱ <%= t('سجّل دلوقتي') %></span><% } %></td>
+    </tr>
+  <% } %>
+    <tr class="total"><td colspan="2"><b><%= t('الاجمالي') %></b></td><td><b><%= n(tot.qty) %></b></td><td><b><%= n(tot.scrap) %></b></td>
+      <td colspan="3"><%= tot.missed ? t(['{0} ساعة ماتسجلتش (اتحسبت ماشتغلش)', tot.missed]) : '' %></td></tr>
+  </tbody></table>
+  <% } %>
+
+  <div class="sh-sub"><%= t('التوقفات') %></div>
+  <table class="sh-grid"><thead><tr><th><%= t('من') %></th><th><%= t('الي') %></th><th><%= t('الدقايق') %></th><th colspan="3"><%= t('سبب العطل') %></th><% if (boss) { %><th class="no-print"></th><% } %></tr></thead><tbody>
+  <% for (const d of downtimes) { %><tr><td><%= d.from_time %></td><td><%= d.to_time %></td><td><%= n(d.minutes) %></td><td colspan="3"><%= d.reason %></td>
+    <% if (boss) { %><td class="no-print"><form method="post" action="/shifts/<%= sh.id %>/downtime/<%= d.id %>/delete" class="inline"><button class="link danger"><%= t('حذف') %></button></form></td><% } %></tr><% } %>
+  <% if (!downtimes.length) { %><tr><td colspan="7" class="empty"><%= t('مفيش توقفات') %></td></tr><% } %>
+  </tbody></table>
+  <div class="sh-sign"><span><%= t('مشرف الورديه') %>: <b><%= sh.sv_name || '................' %></b></span>
+    <span class="muted"><%= t('نهاري') %>: <%= sh.dw_name || '—' %><%= sh.dt_name ? ' / ' + sh.dt_name : '' %> · <%= t('ليلي') %>: <%= sh.nw_name || '—' %><%= sh.nt_name ? ' / ' + sh.nt_name : '' %></span></div>
+</div>
+
+<% if (canEnter) { %>
+<form class="card form no-print" id="entry" onsubmit="return send(event)">
+  <h2><%= t('تسجيل إنتاج ساعة') %> <span id="slot-label"></span></h2>
+  <p class="muted" id="slot-hint"><%= t('اضغط على الساعة في الجدول.') %></p>
+  <input type="hidden" name="slot" id="slot">
+  <div class="grid">
+    <label><span><%= t('عدد الإنتاج') %> *</span><input name="qty" type="number" min="0" step="1" required inputmode="numeric"></label>
+    <label><span><%= t('عدد التوالف') %></span><input name="scrap" type="number" min="0" step="1" value="0" inputmode="numeric"></label>
+    <label><span><%= t('زمن الدورة (ثانية)') %></span><input name="cycle_time" type="number" min="0" step="any" inputmode="decimal"></label>
+    <label><span><%= t('العامل') %></span><select name="employee_id"><option value="">—</option><%- opts(emps.filter((e) => e.worker_type !== 'tech'), '') %></select></label>
+    <label><span><%= t('الفني') %></span><select name="tech_id"><option value="">—</option><%- opts(emps.filter((e) => e.worker_type === 'tech'), '') %></select></label>
+    <label><span><%= t('ملاحظات') %></span><input name="notes"></label>
+    <label id="proof-box" hidden><span>📎 <%= t('صورة أو فيديو (إجباري بعد ما الوقت يعدّي)') %></span><input type="file" name="proof" accept="image/*,video/*" capture="environment"></label>
+  </div>
+  <div class="btns"><button class="btn primary"><%= t('حفظ') %></button></div>
+</form>
+
+<% if (boss) { %>
+<div class="cols no-print">
+<form method="post" action="/shifts/<%= sh.id %>/downtime" class="card form">
+  <h2><%= t('تسجيل توقف') %></h2>
+  <div class="grid"><label><span><%= t('من') %></span><input type="time" name="from_time" required></label><label><span><%= t('الي') %></span><input type="time" name="to_time" required></label>
+  <label class="full"><span><%= t('سبب العطل') %></span><input name="reason" required></label></div>
+  <div class="btns"><button class="btn"><%= t('إضافة') %></button></div>
+</form>
+<form method="post" action="/shifts/<%= sh.id %>" class="card form">
+  <h2><%= t('بيانات المحضر') %></h2>
+  <div class="grid">
+    <label><span><%= t('أمر التشغيل') %></span><select name="order_id"><option value="">—</option><%- opts(orders, sh.order_id) %></select></label>
+    <label><span><%= t('الإسطمبة') %></span><select name="mold_id"><option value="">—</option><%- opts(molds, sh.mold_id) %></select></label>
+    <input type="hidden" name="product_id" value="<%= sh.product_id || '' %>">
+    <label><span><%= t('العامل - نهاري') %></span><select name="day_worker_id"><option value="">—</option><%- opts(emps, sh.day_worker_id) %></select></label>
+    <label><span><%= t('الفني - نهاري') %></span><select name="day_tech_id"><option value="">—</option><%- opts(emps, sh.day_tech_id) %></select></label>
+    <label><span><%= t('العامل - ليلي') %></span><select name="night_worker_id"><option value="">—</option><%- opts(emps, sh.night_worker_id) %></select></label>
+    <label><span><%= t('الفني - ليلي') %></span><select name="night_tech_id"><option value="">—</option><%- opts(emps, sh.night_tech_id) %></select></label>
+    <label><span><%= t('مشرف الوردية') %></span><select name="supervisor_id"><option value="">—</option><%- opts(emps, sh.supervisor_id) %></select></label>
+  </div>
+  <div class="btns"><button class="btn"><%= t('حفظ') %></button></div>
+</form>
+</div>
+<% } %>
+<% } %>
+<script>
+var SLOTS = <%- JSON.stringify(slots.map((s) => ({ i: s.i, from: s.from, to: s.to, state: s.state, e: s.e ? { qty: s.e.qty, scrap: s.e.scrap, cycle_time: s.e.cycle_time, employee_id: s.e.employee_id, tech_id: s.e.tech_id, notes: s.e.notes, status: s.e.status } : null }))).replace(/</g, '\\u003c') %>;
+var TX = <%- JSON.stringify({ late: t('الوقت عدّى: لازم ترفع صورة أو فيديو'), boss: t('أنت مشرف: تقدر تعدّل من غير صورة'), ok: t('تم الحفظ'), hour: t('الساعة') }).replace(/</g, '\\u003c') %>;
+var BOSS = <%= boss %>, ID = <%= sh.id %>;
+function pick(i) {
+  var s = SLOTS[i], f = document.getElementById('entry'); if (!f) return;
+  f.slot.value = i; document.getElementById('slot-label').textContent = '(' + TX.hour + ' ' + s.from + ' → ' + s.to + ')';
+  var late = s.state === 'missed' || (s.state === 'done' && s.e && s.e.status !== 'on_time') || s.state === 'off';
+  document.getElementById('proof-box').hidden = !late;
+  document.getElementById('slot-hint').textContent = late ? (BOSS ? TX.boss : TX.late) : '';
+  ['qty', 'scrap', 'cycle_time', 'employee_id', 'tech_id', 'notes'].forEach(function (k) { f[k].value = s.e && s.e[k] != null && s.e.status !== 'missed' ? s.e[k] : (k === 'scrap' ? 0 : ''); });
+  f.scrollIntoView({ behavior: 'smooth' }); f.qty.focus();
+}
+function send(ev) {
+  ev.preventDefault();
+  var f = ev.target, file = f.proof.files[0], q = new URLSearchParams();
+  ['qty', 'scrap', 'cycle_time', 'employee_id', 'tech_id', 'notes'].forEach(function (k) { if (f[k].value !== '') q.set(k, f[k].value); });
+  var url = '/shifts/' + ID + '/slot/' + f.slot.value;
+  var p = file ? fetch(url + '?' + q, { method: 'POST', body: file, headers: { 'content-type': file.type } })
+               : fetch(url, { method: 'POST', body: q, headers: { 'content-type': 'application/x-www-form-urlencoded' } });
+  p.then(function (r) { return r.json(); }).then(function (j) {
+    if (j.ok) location.reload(); else document.getElementById('msg').innerHTML = '<div class="flash err">' + j.error + '</div>';
+  });
+  return false;
+}
+</script>
+<%- include('partials/footer') %>

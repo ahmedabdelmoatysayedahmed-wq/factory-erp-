@@ -5,7 +5,7 @@ const MOLDS = require('./demo-molds');
 const OLD_FAKE_MOLDS = ['إسطمبة غطاء 38', 'إسطمبة جركن 5L', 'إسطمبة برطمان', 'إسطمبة غطاء 28 (احتياطي)'];
 // أسامي الموظفين الوهميين اللي كانت في النسخ القديمة من البيانات التجريبية
 const OLD_FAKE = ['محمد علي', 'أحمد حسن', 'محمود سيد', 'كريم سمير', 'مصطفى عادل', 'عمرو خالد', 'إسلام فتحي', 'هاني رمضان', 'سامح نبيل', 'ياسر جمال'];
-const TABLES = ['maintenance_orders', 'maintenance_plans', 'bom_lines', 'production_plans', 'product_movements', 'upcoming_molds', 'production_logs', 'stock_movements', 'attendance', 'leaves', 'production_orders', 'molds', 'assets', 'materials', 'products', 'machines'];
+const TABLES = ['sheet_downtimes', 'hourly_logs', 'shift_sheets', 'maintenance_orders', 'maintenance_plans', 'bom_lines', 'production_plans', 'product_movements', 'upcoming_molds', 'production_logs', 'stock_movements', 'attendance', 'leaves', 'production_orders', 'molds', 'assets', 'materials', 'products', 'machines'];
 
 // مسح البيانات (المستخدمين والإعدادات مابيتمسحوش)
 // keepMolds: بيسيب الإسطمبات ومنتجاتها والإسطمبات القادمة (بيشيل بس عداد الإنتاج التجريبي منها)
@@ -108,6 +108,24 @@ function seedDemo(db, { keepEmployees = false, resetEmployees = false } = {}) {
       reported_at: at(2, '13:00'), started_at: at(2, '13:30'), assigned_to: tech, cause: 'سخان رقم 3 محروق', parts_used: 'مستني سخان جديد' });
     ins('maintenance_orders', { code: 'MO-0003', type: 'preventive', mold_id: molds[0], title: 'تنضيف وتلميع الإسطمبة', priority: 'normal', status: 'done',
       reported_at: at(30, '08:00'), started_at: at(30, '08:00'), finished_at: at(30, '11:00'), assigned_to: tech, action_taken: 'تنضيف وتلميع وتشحيم المسامير', cost: 300 });
+
+    // محاضر الوردية النهارده للماكينتين M1 و M2 (بدل سطور الإنتاج المجمعة بتاعتهم النهارده)
+    const SH = require('./shifts');
+    const sd = SH.currentSheetDate(db), nowT = SH.now();
+    db.prepare('DELETE FROM production_logs WHERE date=? AND machine_id IN (?,?)').run(sd, mach[0], mach[1]);
+    [0, 1].forEach((k) => {
+      const op = operators[k] || operators[0];
+      if (!op) return;
+      const sid = ins('shift_sheets', { machine_id: mach[k], date: sd, product_id: prod[0], mold_id: molds[0], order_id: orders[0],
+        day_worker_id: op.id, night_worker_id: op.id, day_tech_id: tech, night_tech_id: tech, supervisor_id: (emps[1] || emps[0]).id,
+        started_at: SH.localStamp(SH.slotStart(db, sd, 0)) });
+      for (let i = 0; i < SH.SLOTS && SH.slotEnd(db, sd, i) <= nowT; i++) {
+        const missed = k === 1 && i === 2, late = k === 0 && i === 4;
+        ins('hourly_logs', { sheet_id: sid, slot: i, qty: missed ? 0 : 60 + Math.round(rnd() * 25), scrap: missed ? 0 : Math.round(rnd() * 4), cycle_time: missed ? null : 42,
+          employee_id: op.id, tech_id: tech, status: missed ? 'missed' : late ? 'late_proof' : 'on_time', entered_at: SH.localStamp(SH.slotEnd(db, sd, i)) });
+      }
+      SH.aggregate(db, sid);
+    });
 
     // خصم الخامات للإنتاج التجريبي حسب الـ BOM
     const { applyConsumption } = require('./bom');

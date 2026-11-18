@@ -87,6 +87,20 @@ CREATE TABLE IF NOT EXISTS maintenance_orders (
   plan_id INTEGER REFERENCES maintenance_plans(id), title TEXT NOT NULL, priority TEXT DEFAULT 'normal', status TEXT DEFAULT 'open',
   reported_at TEXT, reported_by INTEGER, assigned_to INTEGER REFERENCES employees(id), started_at TEXT, finished_at TEXT,
   downtime_minutes REAL, cause TEXT, action_taken TEXT, parts_used TEXT, cost REAL, notes TEXT);
+CREATE TABLE IF NOT EXISTS shift_sheets (
+  id INTEGER PRIMARY KEY, machine_id INTEGER NOT NULL REFERENCES machines(id), date TEXT NOT NULL,
+  product_id INTEGER REFERENCES products(id), mold_id INTEGER REFERENCES molds(id), order_id INTEGER REFERENCES production_orders(id),
+  day_worker_id INTEGER REFERENCES employees(id), day_tech_id INTEGER REFERENCES employees(id),
+  night_worker_id INTEGER REFERENCES employees(id), night_tech_id INTEGER REFERENCES employees(id),
+  supervisor_id INTEGER REFERENCES employees(id), started_at TEXT, closed_at TEXT, notes TEXT, UNIQUE(machine_id, date));
+CREATE TABLE IF NOT EXISTS hourly_logs (
+  id INTEGER PRIMARY KEY, sheet_id INTEGER NOT NULL REFERENCES shift_sheets(id), slot INTEGER NOT NULL,
+  qty REAL DEFAULT 0, scrap REAL DEFAULT 0, cycle_time REAL, employee_id INTEGER REFERENCES employees(id),
+  tech_id INTEGER REFERENCES employees(id), notes TEXT, status TEXT NOT NULL, proof_file TEXT, entered_at TEXT, entered_by INTEGER,
+  UNIQUE(sheet_id, slot));
+CREATE TABLE IF NOT EXISTS sheet_downtimes (
+  id INTEGER PRIMARY KEY, sheet_id INTEGER NOT NULL REFERENCES shift_sheets(id), from_time TEXT, to_time TEXT,
+  minutes REAL, reason TEXT, slot INTEGER);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS leaves (
   id INTEGER PRIMARY KEY, employee_id INTEGER NOT NULL REFERENCES employees(id), type TEXT NOT NULL,
@@ -110,13 +124,16 @@ addColumn('molds', 'producer', 'TEXT');
 addColumn('molds', 'agent', 'TEXT');
 addColumn('products', 'min_stock', 'REAL');
 addColumn('stock_movements', 'production_log_id', 'INTEGER');
+addColumn('production_logs', 'source_key', 'TEXT');
+addColumn('employees', 'worker_type', 'TEXT');
+addColumn('users', 'employee_id', 'INTEGER');
 addColumn('production_orders', 'machine_id', 'INTEGER REFERENCES machines(id)');
 addColumn('production_orders', 'mold_id', 'INTEGER REFERENCES molds(id)');
 addColumn('production_orders', 'priority', "TEXT DEFAULT 'normal'");
 for (const c of ['part_no', 'oem_no', 'material', 'steel', 'runner', 't0_date']) addColumn('upcoming_molds', c, 'TEXT');
 
 // الإعدادات الافتراضية: الجمعة راحة أسبوعية، وقسم الإجازات مقفول
-const defaults = { weekly_off: '5', leaves_enabled: '0', product_min_stock: '100' };
+const defaults = { weekly_off: '5', leaves_enabled: '0', product_min_stock: '100', shift_start_hour: '8', hourly_window_min: '3' };
 for (const [k, v] of Object.entries(defaults)) db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run(k, v);
 
 db.getSettings = () => {

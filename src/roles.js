@@ -6,6 +6,7 @@ const ROLES = {
   storekeeper: 'أمين مخزن',
   hr: 'شؤون الموظفين',
   technician: 'فني صيانة',
+  operator: 'عامل إنتاج',
   viewer: 'مشاهدة فقط',
 };
 
@@ -16,6 +17,8 @@ const PERMS = {
   employees:         { view: ['admin', 'manager', 'hr', 'supervisor', 'viewer'], edit: ['admin', 'manager', 'hr'] },
   attendance:        { view: ['admin', 'manager', 'hr', 'supervisor', 'viewer'], edit: ['admin', 'manager', 'hr', 'supervisor'] },
   leaves:            { view: ['admin', 'manager', 'hr', 'viewer'], edit: ['admin', 'manager', 'hr'] },
+  shifts:            { view: ['admin', 'manager', 'supervisor', 'operator', 'viewer'], edit: ['admin', 'manager', 'supervisor'] },
+  hourly:            { view: ['admin', 'manager', 'supervisor', 'operator', 'viewer'], edit: ['admin', 'manager', 'supervisor', 'operator'] },
   maintenance:       { view: ['admin', 'manager', 'supervisor', 'technician', 'viewer'], edit: ['admin', 'manager', 'supervisor', 'technician'] },
   maintenance_orders: { view: ['admin', 'manager', 'supervisor', 'technician', 'viewer'], edit: ['admin', 'manager', 'supervisor', 'technician'] },
   maintenance_plans: { view: ['admin', 'manager', 'supervisor', 'technician', 'viewer'], edit: ['admin', 'manager', 'supervisor', 'technician'] },

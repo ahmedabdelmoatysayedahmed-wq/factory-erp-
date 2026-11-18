@@ -19,6 +19,14 @@
 </section>
 
 <section class="card">
+  <h2>🔒 <%= t('ساعات اتقفلت ماتسجلتش (اتحسبت ماشتغلش)') %></h2>
+  <table><thead><tr><th><%= t('الماكينة') %></th><th><%= t('التاريخ') %></th><th><%= t('ساعات ماتسجلتش') %></th></tr></thead><tbody>
+  <% for (const m of a.missed) { %><tr><td><a href="/shifts/<%= m.id %>"><%= m.mcode %> <%= m.mname %></a></td><td><%= m.date %></td><td class="warn"><b><%= m.n %></b></td></tr><% } %>
+  <% if (!a.missed.length) { %><tr><td colspan="3" class="empty"><%= t('لا توجد تنبيهات') %> ✅</td></tr><% } %>
+  </tbody></table>
+</section>
+
+<section class="card">
   <h2>🛠️ <%= t('أوامر صيانة مفتوحة') %></h2>
   <table><thead><tr><th><%= t('رقم الأمر') %></th><th><%= t('النوع') %></th><th><%= t('المعدة') %></th><th><%= t('المشكلة / المطلوب') %></th></tr></thead><tbody>
   <% for (const o of a.maintenance) { %><tr><td><a href="/r/maintenance_orders/<%= o.id %>/edit"><%= o.code %></a></td><td><span class="tag <%= o.type === 'breakdown' ? 't-absent' : 't-pending' %>"><%= t({ breakdown: 'عطل', preventive: 'صيانة وقائية', inspection: 'فحص' }[o.type]) %></span></td><td><%= o.eq || '—' %></td><td><%= o.title %></td></tr><% } %>

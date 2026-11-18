@@ -503,3 +503,70 @@ test('maintenance: breakdown sets machine broken, finishing restores it; plans o
   assert.equal((await t('GET', '/r/maintenance_orders/new')).status, 200);
   assert.equal((await t('GET', '/r/production_logs/new')).status, 403);
 });
+
+test('shift sheet: hourly entry within 3 minutes, locked after, photo/video to unlock, totals feed production', async () => {
+  const db = require('../src/db');
+  const SH = require('../src/shifts');
+  const req = client();
+  await req('POST', '/login', { username: 'admin', password: 'admin123' });
+  await req('POST', '/r/machines', { code: 'SM-1', name: 'ماكينة محضر', status: 'running' });
+  await req('POST', '/r/employees', { code: 'SW1', name: 'عامل محضر', worker_type: 'regular', status: 'active' });
+  await req('POST', '/r/employees', { code: 'ST2', name: 'فني محضر', worker_type: 'tech', status: 'active' });
+  const id = (t, c) => db.prepare(`SELECT id FROM ${t} WHERE code=?`).get(c).id;
+  const pid = id('products', 'PB-1');
+  await req('POST', '/r/production_orders', { code: 'PO-SH1', product_id: pid, qty_planned: '1000', status: 'open' });
+  const at = (h, m, d = 5) => SH.setClock(new Date(2026, 9, d, h, m));
+  try {
+    at(8, 10);
+    const open = await req('POST', '/shifts', { machine_id: id('machines', 'SM-1'), date: '2026-10-05', order_id: id('production_orders', 'PO-SH1'),
+      day_worker_id: id('employees', 'SW1'), day_tech_id: id('employees', 'ST2') });
+    const sid = Number(/\/shifts\/(\d+)/.exec(open.location)[1]);
+    const sheet = (await req('GET', `/shifts/${sid}`)).text;
+    assert.match(sheet, /محضر استلام ورديه/); assert.match(sheet, /منتج BOM PB-1/); // المنتج من أمر التشغيل
+    const slot = (i, form, file) => file
+      ? fetch(`${base}/shifts/${sid}/slot/${i}?${new URLSearchParams(form)}`, { method: 'POST', body: file, headers: { 'content-type': 'image/jpeg', cookie: req.cookie() } }).then((r) => r.json())
+      : req('POST', `/shifts/${sid}/slot/${i}`, form).then((r) => JSON.parse(r.text));
+
+    // قبل ما الساعة تخلص: ممنوع
+    at(8, 30); assert.match((await slot(0, { qty: '10' })).error, /لسه ماخلصتش/);
+    // في الـ 3 دقايق: في الميعاد
+    at(9, 2); assert.deepEqual(await slot(0, { qty: '100', scrap: '5', cycle_time: '36' }), { ok: true, status: 'on_time' });
+    const log = () => db.prepare('SELECT * FROM production_logs WHERE source_key LIKE ?').get(`sheet:${sid}:day:%`);
+    assert.equal(log().qty_produced, 100); assert.equal(log().qty_scrap, 5); assert.equal(log().hours_worked, 1);
+    assert.equal(db.prepare('SELECT status FROM production_orders WHERE id=?').get(id('production_orders', 'PO-SH1')).status, 'in_progress');
+
+    // الساعة التانية عدّى وقتها => اتقفلت "ماشتغلش"
+    at(10, 4); SH.markMissed(db);
+    assert.equal(db.prepare('SELECT status FROM hourly_logs WHERE sheet_id=? AND slot=1').get(sid).status, 'missed');
+    assert.match(log().notes, /1 ساعة ماتسجلتش/);
+    // عامل الإنتاج: من غير صورة مرفوض، وبصورة بتتحسب
+    await req('POST', '/users', { username: 'worker1', full_name: 'عامل', role: 'operator', password: 'work123', active: '1', employee_id: id('employees', 'SW1') });
+    const w = client();
+    assert.equal((await w('POST', '/login', { username: 'worker1', password: 'work123' })).location, '/floor');
+    assert.equal((await w('POST', '/shifts', { machine_id: id('machines', 'SM-1') })).status, 403); // مايفتحش محاضر
+    assert.match(JSON.parse((await w('POST', `/shifts/${sid}/slot/1`, { qty: '90' })).text).error, /الوقت عدّى/);
+    const up = await fetch(`${base}/shifts/${sid}/slot/1?qty=90&scrap=2`, { method: 'POST', body: Buffer.from('fakejpeg'), headers: { 'content-type': 'image/jpeg', cookie: w.cookie() } }).then((r) => r.json());
+    assert.deepEqual(up, { ok: true, status: 'late_proof' });
+    const proof = db.prepare('SELECT proof_file FROM hourly_logs WHERE sheet_id=? AND slot=1').get(sid).proof_file;
+    assert.equal((await req('GET', `/shifts/${sid}/proof/${proof}`)).status, 200);
+    assert.equal(log().qty_produced, 190); assert.equal(log().hours_worked, 2);
+
+    // ساعة تالتة اتقفلت؛ المشرف يقدر يعدّلها من غير صورة
+    at(11, 10); SH.markMissed(db);
+    assert.equal(log().hours_worked, 2);
+    assert.deepEqual(await slot(2, { qty: '50' }), { ok: true, status: 'edited' });
+    assert.equal(log().hours_worked, 3);
+    // توقف 30 دقيقة بيتحسب على الإنتاج
+    await req('POST', `/shifts/${sid}/downtime`, { from_time: '10:15', to_time: '10:45', reason: 'تغيير إسطمبة' });
+    assert.equal(log().downtime_minutes, 30);
+    // شاشة الصالة: في الدقايق اللي بعد الساعة فيه عداد تنازلي
+    at(12, 1);
+    const floor = (await w('GET', '/floor')).text;
+    assert.match(floor, /ماكينة محضر/); assert.match(floor, /class="countdown"/);
+    // اليوم اللي بعده: المحضر بيتقفل لوحده وكل الساعات اللي ماتسجلتش بتتحسب
+    at(8, 10, 6); SH.markMissed(db);
+    assert.ok(db.prepare('SELECT closed_at FROM shift_sheets WHERE id=?').get(sid).closed_at);
+    assert.equal(db.prepare("SELECT COUNT(*) c FROM hourly_logs WHERE sheet_id=? AND status='missed'").get(sid).c, 9 + 12 - 0); // ساعات 3..11 نهاري + 12 ليلي
+    assert.match((await req('GET', '/shifts?date=2026-10-05')).text, /SM-1/);
+  } finally { SH.setClock(null); }
+});

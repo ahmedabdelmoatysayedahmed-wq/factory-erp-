@@ -1,0 +1,46 @@
+<%- include('partials/header', { title: 'محاضر الوردية' }) %>
+<% const n = (x) => Number(Number(x || 0).toFixed(1)).toLocaleString('en');
+   const sel = (name, list, ph) => `<select name="${name}"><option value="">${ph || '—'}</option>${list.map((o) => `<option value="${o.id}">${String(o.label).replace(/</g, '&lt;')}</option>`).join('')}</select>`; %>
+<div class="head">
+  <h1>📝 <%= t('محاضر استلام الوردية') %></h1>
+  <div class="btns" style="margin:0">
+    <form method="get" class="inline"><input type="date" name="date" value="<%= date %>" onchange="this.form.submit()"></form>
+    <a class="btn" href="/floor">📱 <%= t('شاشة الصالة (للعمال)') %></a>
+  </div>
+</div>
+<div class="table-wrap card"><table>
+  <thead><tr><th></th><th><%= t('الماكينة') %></th><th><%= t('المنتج') %></th><th><%= t('نهاري') %></th><th><%= t('ليلي') %></th><th><%= t('الإنتاج') %></th><th><%= t('الهالك') %></th><th><%= t('ساعات ماتسجلتش') %></th><th><%= t('الحالة') %></th></tr></thead>
+  <tbody>
+  <% for (const s of sheets) { const miss = s.v.day.missed + s.v.night.missed; %><tr>
+    <td class="actions"><a class="strong-link" href="/shifts/<%= s.id %>"><%= t('فتح') %></a></td>
+    <td data-label="<%= t('الماكينة') %>"><b><%= s.mcode %></b> <%= s.mname %></td>
+    <td data-label="<%= t('المنتج') %>"><%= s.pname || '—' %> <small class="muted"><%= s.pcode || '' %></small></td>
+    <td data-label="<%= t('نهاري') %>"><%= s.dw_name || '—' %><%= s.dt_name ? ' / ' + s.dt_name : '' %></td>
+    <td data-label="<%= t('ليلي') %>"><%= s.nw_name || '—' %><%= s.nt_name ? ' / ' + s.nt_name : '' %></td>
+    <td data-label="<%= t('الإنتاج') %>"><b><%= n(s.v.day.qty + s.v.night.qty) %></b></td>
+    <td data-label="<%= t('الهالك') %>"><%= n(s.v.day.scrap + s.v.night.scrap) %></td>
+    <td data-label="<%= t('ساعات ماتسجلتش') %>" class="<%= miss ? 'warn' : '' %>"><%= miss %></td>
+    <td data-label="<%= t('الحالة') %>"><span class="tag <%= s.closed_at ? 't-done' : 't-in_progress' %>"><%= t(s.closed_at ? 'مقفول' : 'شغال') %></span></td></tr><% } %>
+  <% if (!sheets.length) { %><tr><td colspan="9" class="empty"><%= t('مفيش محاضر في اليوم ده') %></td></tr><% } %>
+  </tbody>
+</table></div>
+
+<% if (can('shifts', 'edit')) { %>
+<form method="post" action="/shifts" class="card form">
+  <h2>+ <%= t('فتح محضر وردية لماكينة') %></h2>
+  <p class="muted"><%= t('من لحظة فتح المحضر، كل ساعة لازم تتسجل في الدقايق اللي بعدها، وإلا بتتحسب ماشتغلش.') %></p>
+  <input type="hidden" name="date" value="<%= date %>">
+  <div class="grid">
+    <label><span><%= t('الماكينة') %> *</span><select name="machine_id" required><option value=""><%= t('— اختر —') %></option><% for (const m of machines) { %><option value="<%= m.id %>"><%= m.label %></option><% } %></select></label>
+    <label><span><%= t('أمر التشغيل') %></span><%- sel('order_id', orders) %></label>
+    <label><span><%= t('الإسطمبة') %></span><%- sel('mold_id', molds) %><small><%= t('المنتج بيتعرف لوحده من الأمر أو الإسطمبة') %></small></label>
+    <label><span><%= t('العامل - نهاري') %></span><%- sel('day_worker_id', emps.filter((e) => e.worker_type !== 'tech')) %></label>
+    <label><span><%= t('الفني - نهاري') %></span><%- sel('day_tech_id', emps.filter((e) => e.worker_type === 'tech')) %></label>
+    <label><span><%= t('العامل - ليلي') %></span><%- sel('night_worker_id', emps.filter((e) => e.worker_type !== 'tech')) %></label>
+    <label><span><%= t('الفني - ليلي') %></span><%- sel('night_tech_id', emps.filter((e) => e.worker_type === 'tech')) %></label>
+    <label><span><%= t('مشرف الوردية') %></span><%- sel('supervisor_id', emps) %></label>
+  </div>
+  <div class="btns"><button class="btn primary"><%= t('فتح المحضر') %></button></div>
+</form>
+<% } %>
+<%- include('partials/footer') %>

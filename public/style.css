@@ -138,3 +138,23 @@ tr.total td{border-top:2px solid var(--line);background:#fafbfc}
 .print-only{display:none}
 .wo-sign{justify-content:space-between;margin-top:40px}
 @media print{.print-only{display:flex}.wo{font-size:12px}.wo .kpis{grid-template-columns:repeat(4,1fr)}}
+/* ---------- محضر الوردية ---------- */
+.sh{font-size:14px}
+.sh-title{text-align:center;font-size:20px;font-weight:700;border:2px solid #333;padding:4px;margin-bottom:6px}
+.sh-meta th{width:auto;background:none;font-weight:600;color:var(--text)}.sh-meta td,.sh-meta th{border:0;padding:4px 6px}
+.sh-sub{text-align:center;font-size:17px;font-weight:700;border:2px solid #333;padding:4px;margin:10px 0 0}
+.sh-grid th,.sh-grid td{border:1px solid #555;text-align:center;padding:4px 6px}
+.sh-grid th{background:#f0f2f5;color:var(--text)}
+.sh-grid tr.sh-open td{background:#fff8e1}.sh-grid tr.sh-missed td{background:#fdecea}.sh-grid tr.sh-running td{background:#eef5ff}
+.sh-grid tr.sh-future td,.sh-grid tr.sh-off td{color:#9aa3af}
+.sh-sign{display:flex;justify-content:space-between;margin-top:14px;flex-wrap:wrap;gap:8px}
+/* شاشة الصالة */
+.floor{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.fl{display:flex;flex-direction:column;gap:10px;margin:0}.fl-open{border:2px solid #f0a020;box-shadow:0 0 0 3px #fff4e0}
+.fl-head{font-size:17px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.fl-strip{display:grid;grid-template-columns:repeat(24,1fr);gap:2px}.fl-strip i{height:12px;border-radius:2px;background:#e6e9ef}
+.fl-strip .st-done{background:#3aa76d}.fl-strip .st-missed{background:#e03131}.fl-strip .st-open{background:#f0a020}.fl-strip .st-running{background:#7aa7e8}
+.fl-form{display:grid;gap:8px}.fl-form input{font-size:18px;padding:10px}.fl-form .btn{font-size:17px;padding:10px}
+.fl-q{font-size:15px}.countdown{font-weight:700;color:#c05621;margin-inline-start:8px;font-size:18px}
+.fl-wait{margin:0;color:var(--muted)}.fl-late summary{cursor:pointer;color:var(--bad)}
+@media print{.sh{font-size:11px}.sh-grid th,.sh-grid td{padding:2px 4px}.sh-grid tr td{background:#fff!important;color:#000!important}}

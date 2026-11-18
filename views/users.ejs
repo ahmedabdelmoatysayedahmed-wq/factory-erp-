@@ -7,6 +7,7 @@
   <label><%= t('اسم الدخول') %><input name="username" required value="<%= edit ? edit.username : '' %>"></label>
   <label><%= t('الاسم الكامل') %><input name="full_name" value="<%= edit ? edit.full_name : '' %>"></label>
   <label><%= t('الدور') %><select name="role"><% for (const [k, v] of Object.entries(ROLES)) { %><option value="<%= k %>" <%= edit && edit.role === k ? 'selected' : '' %>><%= t(v) %></option><% } %></select></label>
+  <label><%= t('الموظف (للعامل)') %><select name="employee_id"><option value="">—</option><% for (const e of emps) { %><option value="<%= e.id %>" <%= edit && edit.employee_id === e.id ? 'selected' : '' %>><%= e.code ? e.code + ' - ' : '' %><%= e.name %></option><% } %></select></label>
   <label><%= t('كلمة المرور') %> <%= edit ? t('(اتركها فاضية لو مش هتغيرها)') : '' %><input name="password" type="password" <%= edit ? '' : 'required' %> minlength="6"></label>
   <label class="chk"><input type="checkbox" name="active" value="1" <%= !edit || edit.active ? 'checked' : '' %>> <%= t('الحساب مفعّل') %></label>
   <div class="btns"><button class="btn primary"><%= t('حفظ') %></button><% if (edit) { %><a class="btn" href="/users"><%= t('إلغاء') %></a><% } %></div>
