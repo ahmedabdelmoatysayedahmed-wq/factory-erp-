@@ -1,55 +1,94 @@
-<%- include('partials/header', { title: 'BOM' }) %>
-<% const n = (x, d = 3) => Number(Number(x || 0).toFixed(d)).toLocaleString('en'); const edit = can('bom', 'edit'); %>
-<div class="head">
-  <h1>🧾 BOM: <%= p.name %> <small><%= p.code || '' %></small></h1>
-  <a class="btn" href="/bom">→ <%= t('كل المنتجات') %></a>
+<%- include('partials/header', { title: 'Pre-BOM' }) %>
+<% const n = (x, d = 3) => Number(Number(x || 0).toFixed(d)).toLocaleString('en'); const edit = can('bom', 'edit');
+   const matSel = (name, val, cls = '') => `<select name="${name}" class="${cls}"><option value="">—</option>${materials.map((m) => `<option value="${m.id}" ${String(val) === String(m.id) ? 'selected' : ''}>${m.label.replace(/</g, '&lt;')}${m.unit ? ' (' + m.unit + ')' : ''}</option>`).join('')}</select>`; %>
+<div class="head no-print">
+  <h1>🧾 Pre-BOM: <%= p.name %> <small><%= p.code || '' %></small></h1>
+  <div class="btns" style="margin:0">
+    <a class="btn" href="/bom">→ <%= t('كل المنتجات') %></a>
+    <% if (edit) { %><label class="btn">📥 <%= t('استيراد شيت Pre-BOM (xlsx)') %><input type="file" accept=".xlsx" hidden onchange="importCard(this)"></label><% } %>
+    <button type="button" class="btn" onclick="window.print()">🖨️ <%= t('طباعة الكارت') %></button>
+  </div>
 </div>
-<div class="kpis">
-  <div class="kpi"><b><%= lines.length %></b><span><%= t('عدد الخامات') %></span></div>
-  <div class="kpi"><b><%= cost === null ? '—' : n(cost, 2) %></b><span><%= t('تكلفة الخامات للقطعة') %></span></div>
-  <div class="kpi"><b><%= cost === null ? '—' : n(cost * 1000, 0) %></b><span><%= t('تكلفة الخامات لكل 1000 قطعة') %></span></div>
-</div>
-<div class="table-wrap card"><table>
-  <thead><tr><% if (edit) { %><th></th><% } %><th><%= t('الخامة') %></th><th><%= t('الكمية للقطعة') %></th><th><%= t('نسبة الفاقد %') %></th><th><%= t('بعد الفاقد') %></th><th><%= t('لكل 1000 قطعة') %></th><th><%= t('سعر الوحدة') %></th><th><%= t('التكلفة للقطعة') %></th></tr></thead>
-  <tbody>
-  <% for (const l of lines) { %><tr>
-    <% if (edit) { %><td class="actions"><form method="post" action="/bom/<%= p.id %>/line/<%= l.id %>/delete" class="inline" onsubmit="return confirm('<%= t('متأكد من الحذف؟') %>')"><button class="link danger"><%= t('حذف') %></button></form></td><% } %>
-    <td data-label="<%= t('الخامة') %>"><%= l.mname %> <small class="muted"><%= l.mcode || '' %></small></td>
-    <% if (edit) { %>
-    <td data-label="<%= t('الكمية للقطعة') %>" colspan="2"><form method="post" action="/bom/<%= p.id %>" class="inline nw"><input type="hidden" name="material_id" value="<%= l.material_id %>">
-      <input name="qty" type="number" step="any" min="0" value="<%= l.qty %>" style="width:90px" onchange="this.form.submit()"> <small><%= l.unit || '' %></small>
-      &nbsp; <input name="scrap_pct" type="number" step="any" min="0" value="<%= l.scrap_pct || 0 %>" style="width:70px" onchange="this.form.submit()"> %</form></td>
-    <% } else { %><td><%= n(l.qty) %> <%= l.unit || '' %></td><td><%= n(l.scrap_pct || 0, 1) %>%</td><% } %>
-    <td data-label="<%= t('بعد الفاقد') %>"><%= n(l.per) %></td>
-    <td data-label="<%= t('لكل 1000 قطعة') %>"><b><%= n(l.per * 1000, 1) %></b> <small><%= l.unit || '' %></small></td>
-    <td data-label="<%= t('سعر الوحدة') %>"><%= l.unit_cost ? n(l.unit_cost, 2) : '—' %></td>
-    <td data-label="<%= t('التكلفة للقطعة') %>"><%= l.cost === null ? '—' : n(l.cost, 2) %></td></tr><% } %>
-  <% if (!lines.length) { %><tr><td colspan="8" class="empty"><%= t('المنتج ده مالوش BOM لسه. ضيف الخامات تحت.') %></td></tr><% } %>
-  </tbody>
-</table></div>
+<div id="pb-msg" class="no-print"></div>
+
+<form method="post" action="/bom/<%= p.id %>/card" id="card-form">
+  <div class="card pb-wrap"><%- include('prebom-card', { card, edit, p }) %></div>
+
+  <% if (edit) { %>
+  <section class="card form no-print">
+    <h2>🧮 <%= t('حساب الخامات من الكارت (للخصم من المخزن)') %></h2>
+    <p class="muted"><%= t('اختار كل خامة من خامات المخزن. الخامة والماستر باتش بيتحسبوا من الوزن ونسبة الماستر باتش، والتغليف والمكونات بالكمية للقطعة.') %></p>
+    <div class="grid">
+      <label><span><%= t('الخامة الأساسية') %> (<%= card.mat_name || card.mat_full_name || "Mat'l" %>)</span><%- matSel('f[main_material_id]', card.main_material_id) %></label>
+      <label><span><%= t('الماستر باتش') %> (<%= card.mb_pct || 0 %>%)</span><%- matSel('f[mb_material_id]', card.mb_material_id) %></label>
+      <label><span><%= t('وزن الرنر للضربة (جرام)') %></span><input name="f[runner_g]" type="number" step="any" value="<%= card.runner_g || '' %>"><small><%= t('سيبه فاضي لو الرنر بيتعاد تدويره') %></small></label>
+      <label><span><%= t('نسبة الفاقد %') %></span><input name="f[scrap_pct]" type="number" step="any" value="<%= card.scrap_pct || '' %>"></label>
+      <label><span><%= t('الكرتونة / البوكس') %> (<%= card.box_pcs || '—' %> <%= t('قطعة') %>)</span><%- matSel('f[box_material_id]', card.box_material_id) %></label>
+      <label><span><%= t('البارتيشن') %></span><%- matSel('f[partition_material_id]', card.partition_material_id) %><input name="f[partition_qty]" type="number" step="any" placeholder="<%= t('الكمية للقطعة') %>" value="<%= card.partition_qty || '' %>"></label>
+      <label><span><%= t('الكيس') %> (<%= card.bag_size || '' %>)</span><%- matSel('f[bag_material_id]', card.bag_material_id) %><input name="f[bag_qty]" type="number" step="any" placeholder="<%= t('الكمية للقطعة') %>" value="<%= card.bag_qty || '' %>"></label>
+      <% card.components.forEach((c, i) => { if (!c.code && !c.material_id) return; %>
+        <label><span><%= t('المكون') %> <%= i + 1 %>: <%= c.code %> <%= c.qty_text ? '(' + c.qty_text + ')' : '' %></span><%- matSel(`components[${i}][material_id]`, c.material_id) %><input name="components[<%= i %>][qty]" type="number" step="any" placeholder="<%= t('الكمية للقطعة') %>" value="<%= c.qty || '' %>"></label>
+      <% }) %>
+    </div>
+    <div class="btns">
+      <button class="btn primary"><%= t('حفظ الكارت') %></button>
+      <button class="btn" name="generate" value="1"><%= t('حفظ واحسب خامات الـ BOM') %></button>
+    </div>
+  </section>
+  <% } %>
+</form>
+
+<section class="card no-print">
+  <h2>🧾 <%= t('خامات الـ BOM') %> <small class="muted">(<%= t('دي اللي بتتخصم من المخزن مع كل إنتاج') %>)</small></h2>
+  <div class="kpis">
+    <div class="kpi"><b><%= lines.length %></b><span><%= t('عدد الخامات') %></span></div>
+    <div class="kpi"><b><%= cost === null ? '—' : n(cost, 2) %></b><span><%= t('تكلفة الخامات للقطعة') %></span></div>
+    <div class="kpi"><b><%= cost === null ? '—' : n(cost * 1000, 0) %></b><span><%= t('تكلفة الخامات لكل 1000 قطعة') %></span></div>
+  </div>
+  <div class="table-wrap"><table>
+    <thead><tr><% if (edit) { %><th></th><% } %><th><%= t('الخامة') %></th><th><%= t('الكمية للقطعة') %></th><th><%= t('نسبة الفاقد %') %></th><th><%= t('بعد الفاقد') %></th><th><%= t('لكل 1000 قطعة') %></th><th><%= t('سعر الوحدة') %></th><th><%= t('التكلفة للقطعة') %></th></tr></thead>
+    <tbody>
+    <% for (const l of lines) { %><tr>
+      <% if (edit) { %><td class="actions"><form method="post" action="/bom/<%= p.id %>/line/<%= l.id %>/delete" class="inline" onsubmit="return confirm('<%= t('متأكد من الحذف؟') %>')"><button class="link danger"><%= t('حذف') %></button></form></td><% } %>
+      <td data-label="<%= t('الخامة') %>"><%= l.mname %> <small class="muted"><%= l.mcode || '' %></small></td>
+      <% if (edit) { %>
+      <td data-label="<%= t('الكمية للقطعة') %>" colspan="2"><form method="post" action="/bom/<%= p.id %>" class="inline nw"><input type="hidden" name="material_id" value="<%= l.material_id %>">
+        <input name="qty" type="number" step="any" min="0" value="<%= l.qty %>" style="width:100px" onchange="this.form.submit()"> <small><%= l.unit || '' %></small>
+        &nbsp; <input name="scrap_pct" type="number" step="any" min="0" value="<%= l.scrap_pct || 0 %>" style="width:70px" onchange="this.form.submit()"> %</form></td>
+      <% } else { %><td><%= n(l.qty) %> <%= l.unit || '' %></td><td><%= n(l.scrap_pct || 0, 1) %>%</td><% } %>
+      <td data-label="<%= t('بعد الفاقد') %>"><%= n(l.per, 5) %></td>
+      <td data-label="<%= t('لكل 1000 قطعة') %>"><b><%= n(l.per * 1000, 2) %></b> <small><%= l.unit || '' %></small></td>
+      <td data-label="<%= t('سعر الوحدة') %>"><%= l.unit_cost ? n(l.unit_cost, 2) : '—' %></td>
+      <td data-label="<%= t('التكلفة للقطعة') %>"><%= l.cost === null ? '—' : n(l.cost, 2) %></td></tr><% } %>
+    <% if (!lines.length) { %><tr><td colspan="8" class="empty"><%= t('مفيش خامات لسه. املا الكارت واضغط «حفظ واحسب خامات الـ BOM»، أو ضيف خامة بإيدك تحت.') %></td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>
 
 <% if (edit) { %>
+<div class="cols no-print">
 <form method="post" action="/bom/<%= p.id %>" class="card form">
-  <h2><%= t('إضافة خامة') %></h2>
+  <h2><%= t('إضافة خامة بإيدك') %></h2>
   <div class="grid">
-    <label><span><%= t('الخامة') %></span><select name="material_id" required><option value=""><%= t('— اختر —') %></option>
-      <% for (const m of materials) { %><option value="<%= m.id %>"><%= m.label %><%= m.unit ? ' (' + m.unit + ')' : '' %></option><% } %></select></label>
-    <label><span><%= t('الكمية للقطعة') %></span><input name="qty" type="number" step="any" min="0" required placeholder="0.35"><small><%= t('بوحدة الخامة. مثلاً 0.35 كجم، أو 0.025 كرتونة لو الكرتونة فيها 40 قطعة') %></small></label>
-    <label><span><%= t('نسبة الفاقد %') %></span><input name="scrap_pct" type="number" step="any" min="0" value="0"><small><%= t('زي الرنرز والتجارب. بتتضاف على الكمية') %></small></label>
+    <label><span><%= t('الخامة') %></span><%- matSel('material_id', '') %></label>
+    <label><span><%= t('الكمية للقطعة') %></span><input name="qty" type="number" step="any" min="0" required></label>
+    <label><span><%= t('نسبة الفاقد %') %></span><input name="scrap_pct" type="number" step="any" min="0" value="0"></label>
   </div>
-  <div class="btns"><button class="btn primary"><%= t('إضافة') %></button></div>
+  <div class="btns"><button class="btn"><%= t('إضافة') %></button></div>
 </form>
 <% if (others.length) { %>
 <form method="post" action="/bom/<%= p.id %>/copy" class="card form">
-  <h2><%= t('انسخ BOM من منتج تاني') %></h2>
+  <h2><%= t('انسخ من منتج تاني') %></h2>
   <p class="muted"><%= t('مفيد للقطع اليمين والشمال أو الموديلات المتشابهة. بعد النسخ عدّل اللي مختلف.') %></p>
-  <div class="grid"><label><select name="from" required><option value=""><%= t('— اختر —') %></option>
-    <% for (const o of others) { %><option value="<%= o.id %>"><%= o.label %></option><% } %></select></label></div>
+  <label><select name="from" required><option value=""><%= t('— اختر —') %></option>
+    <% for (const o of others) { %><option value="<%= o.id %>"><%= o.label %></option><% } %></select></label>
+  <label class="chk"><input type="checkbox" name="card" value="1" checked> <%= t('انسخ كارت الـ Pre-BOM كمان (من غير الصور)') %></label>
   <div class="btns"><button class="btn"><%= t('نسخ') %></button></div>
 </form>
 <% } %>
+</div>
 <% if (lines.length && used) { %>
-<form method="post" action="/bom/<%= p.id %>/recalc" class="card form" onsubmit="return confirm('<%= t('إعادة حساب استهلاك الخامات للإنتاج المتسجل من التاريخ ده؟') %>')">
+<form method="post" action="/bom/<%= p.id %>/recalc" class="card form no-print" onsubmit="return confirm('<%= t('إعادة حساب استهلاك الخامات للإنتاج المتسجل من التاريخ ده؟') %>')">
   <h2><%= t('الإنتاج اللي اتسجل قبل الـ BOM') %></h2>
   <p class="muted"><%= t('الخصم الأوتوماتيك بيشتغل على الإنتاج الجديد. لو عاوز تخصم خامات إنتاج قديم اتسجل قبل ما تعمل الـ BOM، اختار من تاريخ إمتى.') %></p>
   <div class="grid"><label><span><%= t('من تاريخ') %></span><input type="date" name="from"></label></div>
@@ -57,4 +96,22 @@
 </form>
 <% } %>
 <% } %>
+<script>
+var PID = <%= p.id %>, MSG = document.getElementById('pb-msg');
+var TX = <%- JSON.stringify({ done: t('تم استيراد الشيت. راجع الكارت واضغط «حفظ الكارت».'), bad: t('الملف ده مش شيت Pre-BOM (لازم xlsx: افتح الـ xls في Excel واحفظه Save As ‏.xlsx)') }).replace(/</g, '\\u003c') %>;
+function post(url, file) { return fetch(url, { method: 'POST', body: file, headers: { 'content-type': file.type || 'application/octet-stream' } }).then(function (r) { return r.json(); }); }
+function importCard(inp) {
+  if (!inp.files[0]) return;
+  post('/bom/' + PID + '/card/import', inp.files[0]).then(function (j) {
+    if (j.ok) location.href = '/bom/' + PID + '?imported=1'; else MSG.innerHTML = '<div class="flash err">' + (j.error || TX.bad) + '</div>';
+  });
+}
+function addPhoto(inp) {
+  if (!inp.files[0]) return;
+  var label = prompt('NA / NB / ...', '') || '';
+  post('/bom/' + PID + '/card/photo?label=' + encodeURIComponent(label), inp.files[0]).then(function () { location.reload(); });
+}
+function delPhoto(i) { fetch('/bom/' + PID + '/card/photo/' + i + '/delete', { method: 'POST' }).then(function () { location.reload(); }); }
+if (location.search.indexOf('imported=1') > 0) MSG.innerHTML = '<div class="flash ok">' + TX.done + '</div>';
+</script>
 <%- include('partials/footer') %>

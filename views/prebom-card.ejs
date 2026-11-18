@@ -1,0 +1,44 @@
+<%# كارت Pre-BOM بنفس شكل فورم FM-R&D-12. edit = inputs، غير كده نص %>
+<% const V = (v) => (v === undefined || v === null ? '' : v);
+   const inp = (name, val, cls = '') => edit ? `<input class="pb-in ${cls}" name="${name}" value="${String(V(val)).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}">` : `<span class="pb-v ${cls}">${String(V(val)).replace(/&/g, '&amp;').replace(/</g, '&lt;')}</span>`;
+   const A = [...PB.HEAD_A, ['', ''], ['', '']];
+   const C = PB.HEAD_C.slice(0, 11).concat([['comp0', 'Componants 1'], ['comp0q', 'piece / unit'], ...PB.HEAD_C.slice(11)]);
+   const E = []; for (let k = 1; k < 9; k++) { E.push(['c' + k, 'Componants ' + (k + 1)]); E.push(['c' + k + 'q', 'piece / unit']); } %>
+<div class="pb">
+  <div class="pb-title">PRE-BOM</div>
+  <table class="pb-head"><tbody>
+  <% for (let r = 0; r < 16; r++) { const a = A[r], c = C[r], e = E[r]; %>
+    <tr>
+      <th><%= a[1] %></th><td class="pb-b"><%- a[0] ? inp(`f[${a[0]}]`, card[a[0]], 'b') : '' %></td>
+      <th><%= c[1] %></th><td class="pb-b"><%- c[0] === 'comp0' ? inp('components[0][code]', card.components[0].code, 'b') : c[0] === 'comp0q' ? inp('components[0][qty_text]', card.components[0].qty_text, 'b') : inp(`f[${c[0]}]`, card[c[0]], 'b') %></td>
+      <th><%= e[1] %></th><td class="pb-b"><% const k = Number(e[0].slice(1, 2)); %><%- e[0].endsWith('q') ? inp(`components[${k}][qty_text]`, card.components[k].qty_text, 'b') : inp(`components[${k}][code]`, card.components[k].code, 'b') %></td>
+      <% if (r === 0) { %><td class="pb-photos" rowspan="16">
+        <% for (const [i, ph] of card.photos.entries()) { %><figure><img src="/bom/<%= p.id %>/photo/<%= encodeURIComponent(ph.file) %>" alt=""><figcaption><%= ph.label || '' %>
+          <% if (edit) { %><button type="button" class="link danger no-print" onclick="delPhoto(<%= i %>)">✕</button><% } %></figcaption></figure><% } %>
+        <% if (edit) { %><label class="pb-add no-print">📷 <%= t('إضافة صورة') %><input type="file" accept="image/*" onchange="addPhoto(this)" hidden></label><% } %>
+      </td><% } %>
+    </tr>
+  <% } %>
+  </tbody></table>
+
+  <table class="pb-items"><tbody>
+    <tr><th>ITEM CODE</th><% for (let i = 1; i <= PB.ITEMS; i++) { %><th class="c"><%= i %></th><% } %></tr>
+    <% for (const [k, label] of [['desc', 'DESCRIPTION'], ['mat', "MAT'"], ['cavity', 'CAVITY/SHOT'], ['mold_size', 'MOLD SIZE'], ['wip', 'WIP CODE']]) { %>
+      <tr><th><%= label %></th><% for (let i = 0; i < PB.ITEMS; i++) { %><td class="c"><%- inp(`items[${i}][${k}]`, card.items[i][k], 'b c') %></td><% } %></tr>
+    <% } %>
+    <% for (const v of PB.VARIANTS) { %>
+      <tr class="pb-var"><th><%= v %></th><td colspan="3"><%- inp(`variants[${v}][desc]`, card.variants[v].desc, 'b') %></td><td colspan="<%= PB.ITEMS - 3 %>" class="pb-blank"></td></tr>
+      <tr><th>FG CODE</th><td colspan="3"><%- inp(`variants[${v}][fg]`, card.variants[v].fg, 'b') %></td><td colspan="<%= PB.ITEMS - 3 %>" class="pb-blank"></td></tr>
+      <tr><th>OEM NO.</th><td colspan="3"><%- inp(`variants[${v}][oem]`, card.variants[v].oem, 'b') %></td><td colspan="<%= PB.ITEMS - 3 %>" class="pb-blank"></td></tr>
+    <% } %>
+    <tr><th>INJ PRICE</th><td colspan="3"><%- inp('f[inj_price]', card.inj_price, 'b') %></td><td colspan="<%= PB.ITEMS - 3 %>" class="pb-blank"></td></tr>
+  </tbody></table>
+
+  <table class="pb-foot"><tbody>
+    <% for (let i = 0; i < PB.NOTES; i++) { const ap = [['eng', 'ENG MANAGER'], ['qa', 'QA MANAGER'], ['pro', 'PRO MANAGER'], ['md', 'MD']][Math.floor((i - 7) / 2)]; %>
+      <tr><th class="c"><%= i + 1 %></th><td><%- inp(`notes[${i}]`, card.notes[i]) %></td>
+      <% if (i >= 7 && (i - 7) % 2 === 0 && ap) { %><td class="pb-sign" rowspan="2"><span><%= ap[1] %></span><%- inp(`approvals[${ap[0]}]`, card.approvals[ap[0]], 'b') %></td><% } else if (i < 7) { %><td class="pb-blank"></td><% } %></tr>
+    <% } %>
+  </tbody></table>
+  <div class="pb-rev"><span>REVISION : <%- inp('f[revision]', card.revision, 'short') %></span><span>FM-R&amp;D-12 REVISION :0</span></div>
+</div>

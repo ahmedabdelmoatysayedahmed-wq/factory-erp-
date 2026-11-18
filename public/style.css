@@ -99,3 +99,34 @@ tr.total td{border-top:2px solid var(--line);background:#fafbfc}
 .form>small{display:block;margin:-6px 0 6px}
 .btn.danger-outline{color:var(--bad);border-color:#f0b4ab}
 .danger-zone{border-color:#f3c0b9}.danger-btn{background:var(--bad);border-color:var(--bad);color:#fff}
+/* ---------- كارت Pre-BOM (شكل فورم FM-R&D-12) ---------- */
+.pb-wrap{overflow-x:auto;padding:10px}
+.pb{direction:ltr;min-width:980px;font-family:Arial,"Segoe UI",sans-serif;font-size:12px;color:#0b2a6f}
+.pb table{width:100%;border-collapse:collapse;table-layout:fixed}
+.pb th,.pb td{border:1px solid #1d2b4f;padding:0 4px;height:20px;white-space:nowrap;overflow:hidden;text-align:left;background:#fff}
+.pb th{font-weight:400;color:#1d3a8a;background:#fff;width:auto;font-size:inherit}
+.pb .c{text-align:center}
+.pb-title{background:#18c8f0;color:#0b2a6f;text-align:center;font-size:24px;font-weight:800;letter-spacing:1px;border:1px solid #1d2b4f;border-bottom:0;padding:2px}
+.pb-head th{width:11%}.pb-head td.pb-b{width:12%}
+.pb td.pb-photos{width:22%;vertical-align:top;text-align:center;padding:4px;white-space:normal}
+.pb-photos figure{margin:0 0 6px}.pb-photos img{max-width:100%;max-height:120px;display:block;margin:auto}
+.pb-photos figcaption{font-weight:800;font-size:13px}
+.pb-add{display:inline-block;border:1px dashed #9aa7c7;border-radius:6px;padding:6px 10px;cursor:pointer;color:#1f5fbf;margin-top:6px}
+.pb-items th:first-child{width:11%}
+.pb-items tr:first-child th{background:#fff;font-weight:700}
+.pb-foot th{width:4%}.pb-foot td.pb-sign{width:18%;text-align:center;vertical-align:middle}
+.pb-sign span{display:block;font-size:14px;color:#1d3a8a}
+.pb td.pb-blank{background:#fff}
+.pb-in{width:100%;border:0;background:transparent;font:inherit;color:#0b2a6f;padding:0;height:19px;outline:none;border-radius:0}
+.pb-in:focus{background:#fff8d6}
+.pb-in.b,.pb-v.b{font-weight:700}.pb-in.c{text-align:center}.pb-in.short,.pb-v.short{width:40px;display:inline-block}
+.pb-rev{display:flex;justify-content:space-between;color:#1d3a8a;padding:6px 2px 0}
+@media print{
+  @page{size:A4 landscape;margin:8mm}
+  .no-print,.top,.side,.flash{display:none!important}
+  body,main{background:#fff;padding:0}.wrap{display:block}
+  .card.pb-wrap{border:0;padding:0;margin:0;overflow:visible}
+  .pb{min-width:0;font-size:8.5px}.pb th,.pb td{height:11px;line-height:11px;padding:0 3px}
+  .pb-in{height:11px;line-height:11px;font-size:8.5px}.pb-title{font-size:16px;padding:0}
+  .pb-photos img{max-height:85px}.pb-sign span{font-size:10px}.pb-rev{padding-top:2px;font-size:8px}
+}

@@ -75,6 +75,8 @@ CREATE TABLE IF NOT EXISTS bom_lines (
   id INTEGER PRIMARY KEY, product_id INTEGER NOT NULL REFERENCES products(id),
   material_id INTEGER NOT NULL REFERENCES materials(id), qty REAL NOT NULL, scrap_pct REAL DEFAULT 0, notes TEXT,
   UNIQUE(product_id, material_id));
+CREATE TABLE IF NOT EXISTS pre_bom (
+  product_id INTEGER PRIMARY KEY REFERENCES products(id), data TEXT NOT NULL, updated_at TEXT, updated_by INTEGER);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS leaves (
   id INTEGER PRIMARY KEY, employee_id INTEGER NOT NULL REFERENCES employees(id), type TEXT NOT NULL,
@@ -143,4 +145,5 @@ if (!process.env.NO_BACKUP) {
   setInterval(db.backupNow, 3600e3).unref(); // كل ساعة بنشوف لو يوم جديد بدأ
 }
 
+db.dataDir = path.dirname(dbFile);
 module.exports = db;

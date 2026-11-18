@@ -9,6 +9,8 @@ const { resources, STATUS, today } = require('./resources');
 const { LANGS, translator } = require('./i18n');
 const { productStock, getAlerts, clearAlertsCache, periodOf, shiftPeriod } = require('./stock');
 const { bomOf, requirements, applyConsumption } = require('./bom');
+const PB = require('./prebom');
+const fs = require('fs');
 
 const app = express();
 const prod = process.env.NODE_ENV === 'production';
@@ -42,6 +44,7 @@ app.use((req, res, next) => {
     (f.module !== 'leaves' || settings.leavesEnabled) && (!f.roles || (!!req.session.user && f.roles.includes(req.session.user.role)));
   res.locals.ROLES = ROLES;
   res.locals.PERMS = PERMS;
+  res.locals.PB = PB;
   res.locals.resources = resources;
   res.locals.path = req.path;
   res.locals.flash = req.session.flash; delete req.session.flash;
@@ -302,7 +305,8 @@ app.post('/plan/:id/delete', need('production_plans', 'edit'), (req, res) => {
 app.get('/bom', need('bom'), (req, res) => {
   const q = (req.query.q || '').trim();
   const only = req.query.only || '';
-  let rows = db.prepare(`SELECT p.id, p.code, p.name, (SELECT COUNT(*) FROM bom_lines b WHERE b.product_id=p.id) n FROM products p
+  let rows = db.prepare(`SELECT p.id, p.code, p.name, (SELECT COUNT(*) FROM bom_lines b WHERE b.product_id=p.id) n,
+    EXISTS (SELECT 1 FROM pre_bom c WHERE c.product_id=p.id) card FROM products p
     WHERE (? = '' OR p.name LIKE ? OR p.code LIKE ?) ORDER BY p.name`).all(q, `%${q}%`, `%${q}%`);
   const counts = { all: rows.length, with: rows.filter((p) => p.n).length };
   if (only === 'with') rows = rows.filter((p) => p.n); else if (only === 'without') rows = rows.filter((p) => !p.n);
@@ -316,7 +320,7 @@ app.get('/bom/:id', need('bom'), (req, res) => {
   const others = db.prepare(`SELECT p.id, COALESCE(p.code || ' - ', '') || p.name label FROM products p
     WHERE p.id<>? AND EXISTS (SELECT 1 FROM bom_lines b WHERE b.product_id=p.id) ORDER BY p.name`).all(p.id);
   const used = db.prepare('SELECT COALESCE(SUM(qty_produced + qty_scrap),0) s FROM production_logs WHERE product_id=?').get(p.id).s;
-  res.render('bom', { p, ...bomOf(db, p.id), materials, others, used });
+  res.render('bom', { p, ...bomOf(db, p.id), materials, others, used, card: getCard(p) });
 });
 app.post('/bom/:id', need('bom', 'edit'), (req, res) => {
   const pid = Number(req.params.id);
@@ -334,6 +338,10 @@ app.post('/bom/:id/copy', need('bom', 'edit'), (req, res) => {
   const n = db.prepare(`INSERT INTO bom_lines (product_id, material_id, qty, scrap_pct, notes)
     SELECT ?, material_id, qty, scrap_pct, notes FROM bom_lines WHERE product_id=? AND true
     ON CONFLICT(product_id, material_id) DO UPDATE SET qty=excluded.qty, scrap_pct=excluded.scrap_pct`).run(Number(req.params.id), Number(req.body.from)).changes;
+  if (req.body.card) {
+    const src = db.prepare('SELECT data FROM pre_bom WHERE product_id=?').get(Number(req.body.from));
+    if (src) { const d = JSON.parse(src.data); d.photos = []; saveCard(req, Number(req.params.id), d); }
+  }
   flash(req, 'ok', ['تم نسخ {0} خامة', n]);
   res.redirect(`/bom/${req.params.id}`);
 });
@@ -341,6 +349,84 @@ app.post('/bom/:id/line/:line/delete', need('bom', 'edit'), (req, res) => {
   db.prepare('DELETE FROM bom_lines WHERE id=? AND product_id=?').run(req.params.line, req.params.id);
   res.redirect(`/bom/${req.params.id}`);
 });
+// ---------- كارت Pre-BOM ----------
+const uploadsDir = () => { const d = require('path').join(db.dataDir, 'uploads'); fs.mkdirSync(d, { recursive: true }); return d; };
+function getCard(p) {
+  const r = db.prepare('SELECT data FROM pre_bom WHERE product_id=?').get(p.id);
+  const d = PB.normalize(r ? JSON.parse(r.data) : null);
+  if (!r) { d.fpi_no = p.code || ''; d.product_name = p.name_en || p.name; }
+  return d;
+}
+function saveCard(req, pid, d) {
+  db.prepare(`INSERT INTO pre_bom (product_id, data, updated_at, updated_by) VALUES (?,?,datetime('now'),?)
+    ON CONFLICT(product_id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at, updated_by=excluded.updated_by`)
+    .run(pid, JSON.stringify(d), req.session.user.id);
+}
+// الخامات اللي في الـ BOM من الكارت: بتمسح سطور الكارت القديمة وتحط الجديدة
+function generateFromCard(pid, d) {
+  const lines = PB.bomFromCard(d);
+  db.transaction(() => {
+    db.prepare('DELETE FROM bom_lines WHERE product_id=?').run(pid);
+    for (const l of lines) db.prepare('INSERT INTO bom_lines (product_id, material_id, qty, scrap_pct, notes) VALUES (?,?,?,?,?)').run(pid, l.material_id, l.qty, l.scrap_pct, 'من كارت Pre-BOM');
+  })();
+  return lines.length;
+}
+const clip = (v) => (v === undefined || v === null ? '' : String(v).replace(/\s+/g, ' ').trim().slice(0, 300));
+app.post('/bom/:id/card', need('bom', 'edit'), (req, res) => {
+  const p = db.prepare('SELECT * FROM products WHERE id=?').get(req.params.id);
+  if (!p) return res.status(404).render('error', { msg: 'السجل غير موجود' });
+  const b = req.body, d = getCard(p), f = b.f || {};
+  const keys = [...PB.HEAD_A, ...PB.HEAD_C].map((x) => x[0]).concat(['inj_price', 'revision', 'runner_g', 'scrap_pct', 'main_material_id', 'mb_material_id',
+    'box_material_id', 'partition_material_id', 'partition_qty', 'bag_material_id', 'bag_qty']);
+  for (const k of keys) if (k in f) d[k] = clip(f[k]);
+  const arr = (x) => (Array.isArray(x) ? x : x && typeof x === 'object' ? Object.values(x) : []);
+  arr(b.items).forEach((it, i) => { if (d.items[i]) for (const k of ['desc', 'mat', 'cavity', 'mold_size', 'wip']) if (k in it) d.items[i][k] = clip(it[k]); });
+  const comps = b.components || {};
+  for (const i of Object.keys(comps)) { const c = comps[i], dc = d.components[Number(i)]; if (dc) for (const k of ['code', 'qty_text', 'material_id', 'qty']) if (k in c) dc[k] = clip(c[k]); }
+  for (const v of PB.VARIANTS) if (b.variants && b.variants[v]) for (const k of ['desc', 'fg', 'oem']) d.variants[v][k] = clip(b.variants[v][k]);
+  arr(b.notes).forEach((x, i) => { if (i < PB.NOTES) d.notes[i] = clip(x); });
+  if (b.approvals) for (const k of ['eng', 'qa', 'pro', 'md']) d.approvals[k] = clip(b.approvals[k]);
+  saveCard(req, p.id, d);
+  if (b.generate) flash(req, 'ok', ['تم حفظ الكارت وحساب {0} خامة للـ BOM', generateFromCard(p.id, d)]);
+  else flash(req, 'ok', 'تم الحفظ');
+  res.redirect(`/bom/${p.id}`);
+});
+app.post('/bom/:id/card/import', need('bom', 'edit'), express.raw({ type: '*/*', limit: '20mb' }), async (req, res) => {
+  const p = db.prepare('SELECT * FROM products WHERE id=?').get(req.params.id);
+  if (!p) return res.status(404).json({ ok: false });
+  try {
+    const imp = await PB.parseSheet(req.body);
+    const d = getCard(p);
+    // البيانات من الشيت، والحاجات الخاصة بالبرنامج (اختيار الخامات والصور) بتفضل زي ما هي
+    const keepComp = d.components.map((c) => ({ material_id: c.material_id, qty: c.qty }));
+    Object.assign(d, imp, { photos: d.photos, approvals: d.approvals });
+    d.components = imp.components.map((c, i) => ({ ...c, ...keepComp[i] }));
+    saveCard(req, p.id, d);
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ ok: false }); }
+});
+app.post('/bom/:id/card/photo', need('bom', 'edit'), express.raw({ type: 'image/*', limit: '10mb' }), (req, res) => {
+  const p = db.prepare('SELECT * FROM products WHERE id=?').get(req.params.id);
+  const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' }[req.get('content-type')];
+  if (!p || !ext || !Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ ok: false });
+  const file = `prebom-${p.id}-${Date.now()}.${ext}`;
+  fs.writeFileSync(require('path').join(uploadsDir(), file), req.body);
+  const d = getCard(p); d.photos.push({ file, label: clip(req.query.label).slice(0, 20) }); saveCard(req, p.id, d);
+  res.json({ ok: true });
+});
+app.post('/bom/:id/card/photo/:i/delete', need('bom', 'edit'), (req, res) => {
+  const p = db.prepare('SELECT * FROM products WHERE id=?').get(req.params.id);
+  if (!p) return res.status(404).json({ ok: false });
+  const d = getCard(p); const [ph] = d.photos.splice(Number(req.params.i), 1);
+  if (ph) { try { fs.unlinkSync(require('path').join(uploadsDir(), ph.file)); } catch {} saveCard(req, p.id, d); }
+  res.json({ ok: true });
+});
+app.get('/bom/:id/photo/:file', need('bom'), (req, res) => {
+  const name = require('path').basename(req.params.file);
+  if (!name.startsWith(`prebom-${Number(req.params.id)}-`)) return res.status(404).end();
+  res.sendFile(require('path').join(uploadsDir(), name), (e) => e && res.status(404).end());
+});
+
 // إعادة حساب استهلاك الخامات لإنتاج متسجل قبل ما الـ BOM يتعمل
 app.post('/bom/:id/recalc', need('bom', 'edit'), (req, res) => {
   const ids = db.prepare('SELECT id FROM production_logs WHERE product_id=? AND date >= ?').all(req.params.id, req.body.from || '0000-00-00');

@@ -10,7 +10,7 @@ let server, base;
 
 function client() {
   const jar = {};
-  return async (method, url, form, raw) => {
+  const fn = async (method, url, form, raw) => {
     const res = await fetch(base + url, {
       method, redirect: 'manual',
       headers: { cookie: Object.entries(jar).map(([k, v]) => k + '=' + v).join('; '), ...(form ? { 'content-type': 'application/x-www-form-urlencoded' } : {}), ...(raw ? { 'content-type': 'application/octet-stream' } : {}) },
@@ -19,6 +19,9 @@ function client() {
     for (const c of res.headers.getSetCookie()) { const [k, v] = c.split(';')[0].split('='); jar[k] = v; }
     return { status: res.status, location: res.headers.get('location'), text: await res.text() };
   };
+  fn.cookie = () => Object.entries(jar).map(([k, v]) => k + '=' + v).join('; ');
+  fn.base = async () => base;
+  return fn;
 }
 
 before(() => new Promise((r) => { server = app.listen(0, () => { base = 'http://127.0.0.1:' + server.address().port; r(); }); }));
@@ -347,4 +350,62 @@ test('Excel templates for materials and BOM import correctly', async () => {
   assert.deepEqual(JSON.parse((await req('POST', '/r/bom/import', null, fx('bom-filled.xlsx'))).text), { ok: true, added: 2, updated: 0, skipped: 0 });
   const pid = db.prepare("SELECT id FROM products WHERE code='ANMBBS027 RA'").get().id;
   assert.equal(db.prepare('SELECT qty FROM bom_lines WHERE product_id=? AND material_id=?').get(pid, m1.id).qty, 0.3);
+});
+
+test('Pre-BOM card: import sheet, save, photo, calculate BOM, copy, print layout', async () => {
+  const db = require('../src/db');
+  const req = client();
+  await req('POST', '/login', { username: 'admin', password: 'admin123' });
+  for (const c of ['PRE-1', 'PRE-2']) await req('POST', '/r/products', { code: c, name: 'منتج كارت ' + c });
+  const pid = (c) => db.prepare('SELECT id FROM products WHERE code=?').get(c).id;
+  const mats = {};
+  for (const [c, n, u] of [['PM-1', 'خامة PP-T', 'كجم'], ['PM-2', 'ماستر أسود كارت', 'كجم'], ['PM-3', 'بوكس كارت', 'كرتونة'], ['PM-4', 'كليبس كارت', 'قطعة']]) {
+    await req('POST', '/r/materials', { code: c, name: n, unit: u });
+    mats[c] = db.prepare('SELECT id FROM materials WHERE code=?').get(c).id;
+  }
+  // كارت جديد فاضي فيه رقم القطعة، وبيتطبع بنفس الفورم
+  const blank = (await req('GET', `/bom/${pid('PRE-1')}`)).text;
+  assert.match(blank, /class="pb-title">PRE-BOM/);
+  assert.match(blank, /name="f\[fpi_no\]" value="PRE-1"/);
+  assert.match(blank, /FM-R&amp;D-12 REVISION :0/);
+
+  // استيراد شيت Pre-BOM
+  const x = fs.readFileSync(path.join(__dirname, 'fixtures', 'prebom-sample.xlsx'));
+  assert.equal(JSON.parse((await req('POST', `/bom/${pid('PRE-1')}/card/import`, null, x)).text).ok, true);
+  assert.equal(JSON.parse((await req('POST', `/bom/${pid('PRE-1')}/card/import`, null, Buffer.from('nope'))).text).ok, false);
+  const page = (await req('GET', `/bom/${pid('PRE-1')}`)).text;
+  for (const v of ['TST001', 'COROLLA 2008', '1,500g.', 'CLIP-01', 'SCREW-02', '50-TST001 NB', 'WITH FOG', 'WIP-77', 'first note line']) assert.ok(page.includes(v), v);
+
+  // صورة للكارت
+  const png = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
+  const up = await fetch((await req.base()) + `/bom/${pid('PRE-1')}/card/photo?label=NA`, { method: 'POST', body: png, headers: { 'content-type': 'image/png', cookie: req.cookie() } });
+  assert.equal((await up.json()).ok, true);
+  const file = /\/photo\/(prebom-[^"]+)"/.exec((await req('GET', `/bom/${pid('PRE-1')}`)).text)[1];
+  assert.equal((await req('GET', `/bom/${pid('PRE-1')}/photo/${file}`)).status, 200);
+  assert.equal((await req('GET', `/bom/${pid('PRE-2')}/photo/${file}`)).status, 404); // صورة منتج تاني
+
+  // اختيار الخامات من المخزن وحساب الـ BOM من الكارت:
+  // (1500 جرام + رنر 100 ÷ 2 قطعة) = 1.55 كجم => PP 98% = 1.519، ماستر 2% = 0.031، بوكس 1÷10، كليبس 4
+  await req('POST', `/bom/${pid('PRE-1')}/card`, { 'f[main_material_id]': mats['PM-1'], 'f[mb_material_id]': mats['PM-2'], 'f[runner_g]': '100',
+    'f[box_material_id]': mats['PM-3'], 'components[0][material_id]': mats['PM-4'], 'components[0][qty]': '4', 'approvals[qa]': 'م. سامي', generate: '1' });
+  const q = (m) => db.prepare('SELECT qty FROM bom_lines WHERE product_id=? AND material_id=?').get(pid('PRE-1'), mats[m])?.qty;
+  assert.equal(q('PM-1'), 1.519); assert.equal(q('PM-2'), 0.031); assert.equal(q('PM-3'), 0.1); assert.equal(q('PM-4'), 4);
+  const saved = (await req('GET', `/bom/${pid('PRE-1')}`)).text;
+  assert.match(saved, /value="م. سامي"/);
+  assert.match(saved, /COROLLA 2008/); // الحفظ ماضيعش بيانات الشيت
+
+  // نسخ الكارت والخامات لمنتج تاني (من غير الصور)
+  await req('POST', `/bom/${pid('PRE-2')}/copy`, { from: pid('PRE-1'), card: '1' });
+  const copied = (await req('GET', `/bom/${pid('PRE-2')}`)).text;
+  assert.match(copied, /COROLLA 2008/);
+  assert.doesNotMatch(copied, /\/photo\/prebom-/);
+  assert.equal(db.prepare('SELECT COUNT(*) c FROM bom_lines WHERE product_id=?').get(pid('PRE-2')).c, 4);
+  assert.match((await req('GET', '/bom?q=PRE-')).text, /✅/);
+
+  // أمين المخزن يشوف الكارت بس مايعدّلش
+  const s = client();
+  await s('POST', '/login', { username: 'store', password: 'store123' });
+  const view = await s('GET', `/bom/${pid('PRE-1')}`);
+  assert.equal(view.status, 200); assert.doesNotMatch(view.text, /class="pb-in/);
+  assert.equal((await s('POST', `/bom/${pid('PRE-1')}/card`, { 'f[car_name]': 'X' })).status, 403);
 });
